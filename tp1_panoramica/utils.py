@@ -101,3 +101,45 @@ def anms(keypoints, n_max):
     selected_keypoints = [keypoints[i] for i in top_indices]
     
     return selected_keypoints
+
+def graf_keypoints(img,keypoints,r=0):
+    automatico=0
+
+    if(r==0):
+        automatico=1
+    
+    img_copy=img.copy()
+    for kp in keypoints:
+        x, y = int(kp.pt[0]), int(kp.pt[1])
+        if(automatico==1):
+            r = max(7, int(kp.size / 3))
+        cv2.circle(img_copy, (x, y), r + 2, (0, 0, 0), -1)    # halo negro
+        cv2.circle(img_copy, (x, y), r, (0, 0, 255), -1)      # rojo llamativo (BGR)
+    return img_copy
+
+def matchea(desc1,desc2,trees=10,checks=50):
+    dict_indices=dict(algorithm=1, trees=trees)
+    search_params = dict(checks=checks)
+    #nuestro "matcher"
+    flann = cv2.FlannBasedMatcher(dict_indices,search_params)
+    #conseguimos los matches:
+    matches_k2 = flann.knnMatch(desc1, desc2, k=2)
+
+    #Mejores matches:
+    buenos_matches = []
+    for m, n in matches_k2:
+        # Si la distancia al 1er vecino es mucho menor que al 2do vecino, es un buen match
+        if m.distance < 0.75 * n.distance:
+            buenos_matches.append(m)
+    return buenos_matches
+
+def calc_anms(img,_print:bool=False):
+    sift = cv2.SIFT_create()  # sin limitar nfeatures, detectamos todos primero
+    all_keys, all_desc = sift.detectAndCompute(img, None)
+    kp_anms = anms(all_keys, n_max=200)
+
+    if(_print):
+        print(f'Keypoints detectados originalmente: {len(all_keys)}')
+        print(f'Keypoints tras ANMS: {len(kp_anms)}')
+    
+    return all_keys,all_desc,kp_anms
