@@ -1,19 +1,31 @@
+from colorsys import hsv_to_rgb
+
 import numpy as np 
 from matplotlib import pyplot as plt
 import cv2
 
 
 def plot_matches(img1, kp1, img2, kp2, matches, titulo=None, figsize=(20, 10)):
-    """Grafica los matches entre dos imagenes usando cv2.drawMatches."""
+    """Grafica cada match con un color distinto y circulos en sus keypoints."""
     img_matches = cv2.drawMatches(
-        img1, kp1, img2, kp2, matches, None,
-        matchColor=(0, 255, 0),
+        img1, kp1, img2, kp2, [], None,
         singlePointColor=None,
         flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS
     )
 
     plt.figure(figsize=figsize)
     plt.imshow(cv2.cvtColor(img_matches, cv2.COLOR_BGR2RGB))
+    for i, match in enumerate(matches):
+        # El paso aureo separa los tonos de conexiones consecutivas.
+        color = hsv_to_rgb((i * 0.618033988749895) % 1, 0.85, 1)
+        x1, y1 = kp1[match.queryIdx].pt
+        x2, y2 = kp2[match.trainIdx].pt
+        x2 += img1.shape[1]
+        plt.plot([x1, x2], [y1, y2], color=color, linewidth=1.2)
+        plt.scatter(
+            [x1, x2], [y1, y2], s=80, facecolors='none',
+            edgecolors=[color], linewidths=2, zorder=3
+        )
     plt.axis('off')
     plt.title(titulo if titulo else f'{len(matches)} matches encontrados')
     plt.show()
