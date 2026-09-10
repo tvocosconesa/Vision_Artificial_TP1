@@ -155,3 +155,74 @@ def calc_anms(img,_print:bool=False):
         print(f'Keypoints tras ANMS: {len(kp_anms)}')
     
     return all_keys,all_desc,kp_anms
+
+def _normalizar_puntos(pts):
+    pts = np.asarray(pts, dtype=np.float64)
+    centroide = pts.mean(axis=0)
+    desplazados = pts - centroide
+    dist_media = np.mean(np.sqrt(np.sum(desplazados ** 2, axis=1)))
+
+    escala = np.sqrt(2) / dist_media if dist_media > 1e-8 else 1.0
+
+    T = np.array([
+        [escala, 0,      -escala * centroide[0]],
+        [0,      escala, -escala * centroide[1]],
+        [0,      0,       1]
+    ])
+
+    pts_h = np.hstack([pts, np.ones((pts.shape[0], 1))])
+    pts_norm = (T @ pts_h.T).T
+    return pts_norm[:, :2], T
+
+
+def calcular_homografia_dlt(pts_origen, pts_destino, normalizar=True):
+    pts_origen = np.asarray(pts_origen, dtype=np.float64)
+    pts_destino = np.asarray(pts_destino, dtype=np.float64)
+
+    if pts_origen.shape[0] < 4 or pts_destino.shape[0] < 4:
+        raise ValueError("Se necesitan al menos 4 correspondencias de puntos.")
+    if pts_origen.shape != pts_destino.shape:
+        raise ValueError("pts_origen y pts_destino deben tener la misma forma.")
+
+    if normalizar:
+        pts_o, T_o = _normalizar_puntos(pts_origen)
+        pts_d, T_d = _normalizar_puntos(pts_destino)
+    else:
+        pts_o, pts_d = pts_origen, pts_destino
+        T_o = T_d = np.eye(3)
+
+    # Construir la matriz A (2N x 9) a partir de x' x (H x) = 0
+    filas = []
+    for (x, y), (xp, yp) in zip(pts_o, pts_d):
+        filas.append([-x, -y, -1, 0, 0, 0, x * xp, y * xp, xp])
+        filas.append([0, 0, 0, -x, -y, -1, x * yp, y * yp, yp])
+    A = np.array(filas)
+
+    # Resolver A h = 0: h es el vector singular derecho asociado
+    # al menor valor singular (ultima fila de Vt en la SVD de A)
+    _, _, Vt = np.linalg.svd(A)
+    H_norm = Vt[-1].reshape(3, 3)
+
+    # Deshacer la normalizacion de Hartley
+    H = np.linalg.inv(T_d) @ H_norm @ T_o
+
+    # Fijar la escala para que H[2,2] = 1
+    H = H / H[2, 2]
+    return H
+
+
+def homografia_entre_imagenes(img1, img2, pts1, pts2, normalizar=True):
+    pts1 = np.asarray(pts1, dtype=np.float64)
+    pts2 = np.asarray(pts2, dtype=np.float64)
+
+    h1, w1 = img1.shape[:2]
+    h2, w2 = img2.shape[:2]
+
+    for (x, y) in pts1:
+        if not (0 <= x < w1 and 0 <= y < h1):
+            raise ValueError(f"Punto {(x, y)} fuera de los limites de img1 ({w1}x{h1}).")
+    for (x, y) in pts2:
+        if not (0 <= x < w2 and 0 <= y < h2):
+            raise ValueError(f"Punto {(x, y)} fuera de los limites de img2 ({w2}x{h2}).")
+
+    return calcular_homografia_dlt(pts1, pts2, normalizar=normalizar)
