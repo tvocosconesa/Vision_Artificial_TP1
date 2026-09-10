@@ -226,3 +226,81 @@ def homografia_entre_imagenes(img1, img2, pts1, pts2, normalizar=True):
             raise ValueError(f"Punto {(x, y)} fuera de los limites de img2 ({w2}x{h2}).")
 
     return calcular_homografia_dlt(pts1, pts2, normalizar=normalizar)
+
+def _proyectar_puntos(H, pts):
+    """Aplica H a un conjunto de puntos 2D (Nx2) usando coordenadas
+    homogeneas y devuelve los puntos resultantes ya divididos por w."""
+    pts_h = np.hstack([pts, np.ones((pts.shape[0], 1))])
+    proy_h = (H @ pts_h.T).T
+    w = proy_h[:, 2]
+    # Evitar division por cero (puntos que se van al infinito con una H degenerada)
+    w = np.where(np.abs(w) < 1e-12, 1e-12, w)
+    return proy_h[:, :2] / w[:, None]
+ 
+def ransac_homografia(k_i, k_j, T=1000, t=3.0, semilla=None):
+    """
+    Estima la homografia H que mapea k_i -> k_j de forma robusta ante
+    correspondencias incorrectas (outliers), usando RANSAC.
+ 
+    Parametros
+    ----------
+    k_i : array-like (N,2)
+        Keypoints detectados en la imagen I1.
+    k_j : array-like (N,2)
+        Keypoints correspondientes detectados en la imagen I2 (mismo orden
+        que k_i, es decir k_i[n] <-> k_j[n]).
+    T : int
+        Cantidad de iteraciones de RANSAC a realizar.
+    t : float
+        Umbral de distancia (en pixeles) para considerar una correspondencia
+        como inlier.
+    semilla : int o None
+        Semilla del generador aleatorio, para resultados reproducibles.
+ 
+    Retorna
+    -------
+    H : ndarray (3,3)
+        Homografia final, recalculada con cuadrados minimos (DLT) usando
+        todas las correspondencias inliers del mejor modelo encontrado.
+    inliers : ndarray de bools, forma (N,)
+        Mascara indicando que correspondencias de (k_i, k_j) son inliers
+        respecto a H.
+    """
+    k_i = np.asarray(k_i, dtype=np.float64)
+    k_j = np.asarray(k_j, dtype=np.float64)
+ 
+    n = k_i.shape[0]
+ 
+    rng = np.random.default_rng(semilla)
+    indices = np.arange(n)
+ 
+    mejor_inliers = None
+    mejor_num_inliers = -1
+ 
+    # 1: for i = [1:T] do
+    for _ in range(T):
+        # 2: Seleccionar 4 pares de correspondencias aleatorias
+        muestra = rng.choice(indices, size=4, replace=False)
+ 
+        # 3: Calcular homografia H utilizando los pares seleccionados
+        try:
+            H_muestra = calcular_homografia_dlt(k_i[muestra], k_j[muestra])
+        except np.linalg.LinAlgError:
+            # 4 puntos degenerados (colineales, repetidos, etc.) -> descartar
+            continue
+ 
+        # 4: Determinar inliers tal que dist(k_j, H*k_i) < t
+        proyectados = _proyectar_puntos(H_muestra, k_i)
+        distancias = np.sqrt(np.sum((k_j - proyectados) ** 2, axis=1))
+        inliers = distancias < t
+        num_inliers = int(np.sum(inliers))
+ 
+        # 5: Recordar el conjunto de inliers mas grande
+        if num_inliers > mejor_num_inliers:
+            mejor_num_inliers = num_inliers
+            mejor_inliers = inliers
+ 
+    # 7: Recalcular H con cuadrados minimos utilizando todos los inliers
+    H_final = calcular_homografia_dlt(k_i[mejor_inliers], k_j[mejor_inliers])
+ 
+    return H_final, mejor_inliers
