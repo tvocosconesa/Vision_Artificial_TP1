@@ -31,6 +31,45 @@ def plot_matches(img1, kp1, img2, kp2, matches, titulo=None, figsize=(20, 10)):
     plt.show()
 
 
+def plot_point_correspondences(img1, pts1, img2, pts2, titulo=None, figsize=(20, 10)):
+    """Grafica pares de puntos seleccionados manualmente entre dos imagenes,
+    numerando cada par y coloreandolo igual en ambos lados para poder
+    identificar visualmente la correspondencia."""
+    h1, w1 = img1.shape[:2]
+    canvas = np.concatenate([
+        cv2.cvtColor(img1, cv2.COLOR_BGR2RGB),
+        cv2.cvtColor(img2, cv2.COLOR_BGR2RGB)
+    ], axis=1)
+
+    plt.figure(figsize=figsize)
+    plt.imshow(canvas)
+    for i, ((x1, y1), (x2, y2)) in enumerate(zip(pts1, pts2)):
+        color = hsv_to_rgb((i * 0.618033988749895) % 1, 0.85, 1)
+        x2_shifted = x2 + w1
+        plt.plot([x1, x2_shifted], [y1, y2], color=color, linewidth=1.5, linestyle='--')
+        plt.scatter([x1, x2_shifted], [y1, y2], s=150, facecolors='none',
+                    edgecolors=[color], linewidths=2.5, zorder=3)
+        plt.text(x1, y1 - 15, str(i + 1), color=color, fontsize=14, fontweight='bold', ha='center')
+        plt.text(x2_shifted, y2 - 15, str(i + 1), color=color, fontsize=14, fontweight='bold', ha='center')
+    plt.axis('off')
+    plt.title(titulo if titulo else f'{len(pts1)} correspondencias seleccionadas')
+    plt.show()
+
+
+def plot_warp_result(img_src, img_dst, H, titulo=None, figsize=(12, 8)):
+    """Aplica una homografia H a img_src y la mezcla (50/50) con img_dst
+    para verificar visualmente que tan bien queda alineada la transformacion."""
+    h, w = img_dst.shape[:2]
+    warped = cv2.warpPerspective(img_src, H, (w, h))
+    blend = cv2.addWeighted(warped, 0.5, img_dst, 0.5, 0)
+
+    plt.figure(figsize=figsize)
+    plt.imshow(cv2.cvtColor(blend, cv2.COLOR_BGR2RGB))
+    plt.axis('off')
+    plt.title(titulo if titulo else 'Resultado del warping (mezcla 50/50 con el ancla)')
+    plt.show()
+
+
 def detectar_matches(descr1, descr2, ratio=0.75, plot=False,
                       img1=None, kp1=None, img2=None, kp2=None, titulo=None):
     """Matchea dos sets de descriptores con BFMatcher + ratio test de Lowe.
@@ -54,65 +93,49 @@ def detectar_matches(descr1, descr2, ratio=0.75, plot=False,
 def anms(keypoints, n_max):
     """
     Supresión No Máxima Adaptativa (ANMS).
-    
+
     Selecciona los N keypoints que maximizan la dispersión espacial,
     priorizando aquellos con mayor 'respuesta' (response) que además
     estén rodeados de un radio libre de otros puntos más fuertes.
-    
-    Parámetros
-    ----------
-    keypoints : list[cv2.KeyPoint]
-        Lista de keypoints detectados (ej. por SIFT, ORB, etc.)
-    n_max : int
-        Número máximo de keypoints a retener.
-    
+
     Retorna
     -------
-    list[cv2.KeyPoint]
+    selected_keypoints : list[cv2.KeyPoint]
         Los n_max keypoints seleccionados, bien distribuidos espacialmente.
+    top_indices : np.ndarray (n_max,)
+        Índices de los keypoints seleccionados dentro de la lista original.
+        Necesarios para filtrar el array de descriptores en paralelo y
+        mantener la correspondencia keypoint[i] <-> descriptor[i].
     """
     n = len(keypoints)
-    
+
     # Si ya tenemos menos keypoints que el máximo pedido, no hay nada que suprimir
     if n <= n_max:
-        return keypoints
-    
-    # Extraer coordenadas (x, y) y respuestas (r) de cada keypoint
-    coords = np.array([kp.pt for kp in keypoints])       # shape (n, 2)
-    responses = np.array([kp.response for kp in keypoints])  # shape (n,)
-    
+        return list(keypoints), np.arange(n)
+
+    coords = np.array([kp.pt for kp in keypoints])
+    responses = np.array([kp.response for kp in keypoints])
+
     x = coords[:, 0]
     y = coords[:, 1]
-    
-    # Matriz de distancias euclidianas al cuadrado entre todos los pares (i, j)
-    # SD[i, j] = (x_j - x_i)^2 + (y_j - y_i)^2
-    dx = x[np.newaxis, :] - x[:, np.newaxis]  # dx[i, j] = x_j - x_i
-    dy = y[np.newaxis, :] - y[:, np.newaxis]  # dy[i, j] = y_j - y_i
-    SD = dx**2 + dy**2                         # shape (n, n)
-    
-    # Matriz de condición: r_j > r_i  (solo miramos vecinos "más fuertes")
-    resp_i = responses[:, np.newaxis]  # r_i, shape (n, 1)
-    resp_j = responses[np.newaxis, :]  # r_j, shape (1, n)
-    mask_stronger = resp_j > resp_i    # True donde r_j > r_i
-    
-    # Donde la condición no se cumple, invalidamos esa distancia (poniendo infinito)
-    # así no interfiere al calcular el mínimo
+
+    dx = x[np.newaxis, :] - x[:, np.newaxis]
+    dy = y[np.newaxis, :] - y[:, np.newaxis]
+    SD = dx**2 + dy**2
+
+    resp_i = responses[:, np.newaxis]
+    resp_j = responses[np.newaxis, :]
+    mask_stronger = resp_j > resp_i
+
     SD_masked = np.where(mask_stronger, SD, np.inf)
-    
-    # R_i = distancia mínima al vecino más cercano que sea más fuerte que i
     R = np.min(SD_masked, axis=1)
-    
-    # Si un keypoint no tiene ningún vecino más fuerte (ej. el máximo global),
-    # R_i queda en infinito -> lo dejamos así para que siempre quede primero
-    # al ordenar de forma descendente
-    
-    # Ordenar de forma descendente por R_i y quedarnos con los N mejores
-    order = np.argsort(-R)  # -R para orden descendente
+
+    order = np.argsort(-R)
     top_indices = order[:n_max]
-    
+
     selected_keypoints = [keypoints[i] for i in top_indices]
-    
-    return selected_keypoints
+
+    return selected_keypoints, top_indices
 
 def graf_keypoints(img,keypoints,r=0):
     automatico=0
@@ -145,16 +168,21 @@ def matchea(desc1,desc2,trees=10,checks=50):
             buenos_matches.append(m)
     return buenos_matches
 
-def calc_anms(img,_print:bool=False):
+def calc_anms(img, n_max=200, _print=False):
+    """Detecta keypoints con SIFT, aplica ANMS y devuelve los keypoints
+    seleccionados junto con SUS descriptores correspondientes (alineados
+    índice a índice, que es lo que necesita el matching)."""
     sift = cv2.SIFT_create()  # sin limitar nfeatures, detectamos todos primero
     all_keys, all_desc = sift.detectAndCompute(img, None)
-    kp_anms = anms(all_keys, n_max=200)
 
-    if(_print):
+    kp_anms, idx_anms = anms(all_keys, n_max=n_max)
+    desc_anms = all_desc[idx_anms]   # <-- la línea que faltaba
+
+    if _print:
         print(f'Keypoints detectados originalmente: {len(all_keys)}')
         print(f'Keypoints tras ANMS: {len(kp_anms)}')
-    
-    return all_keys,all_desc,kp_anms
+
+    return kp_anms, desc_anms
 
 def _normalizar_puntos(pts):
     pts = np.asarray(pts, dtype=np.float64)
@@ -304,3 +332,42 @@ def ransac_homografia(k_i, k_j, T=1000, t=3.0, semilla=None):
     H_final = calcular_homografia_dlt(k_i[mejor_inliers], k_j[mejor_inliers])
  
     return H_final, mejor_inliers
+
+
+def plot_point_correspondences(img1, pts1, img2, pts2, titulo=None, figsize=(20, 10)):
+    """Grafica pares de puntos seleccionados manualmente entre dos imagenes,
+    numerando cada par y coloreandolo igual en ambos lados para poder
+    identificar visualmente la correspondencia."""
+    h1, w1 = img1.shape[:2]
+    canvas = np.concatenate([
+        cv2.cvtColor(img1, cv2.COLOR_BGR2RGB),
+        cv2.cvtColor(img2, cv2.COLOR_BGR2RGB)
+    ], axis=1)
+
+    plt.figure(figsize=figsize)
+    plt.imshow(canvas)
+    for i, ((x1, y1), (x2, y2)) in enumerate(zip(pts1, pts2)):
+        color = hsv_to_rgb((i * 0.618033988749895) % 1, 0.85, 1)
+        x2_shifted = x2 + w1
+        plt.plot([x1, x2_shifted], [y1, y2], color=color, linewidth=1.5, linestyle='--')
+        plt.scatter([x1, x2_shifted], [y1, y2], s=150, facecolors='none',
+                    edgecolors=[color], linewidths=2.5, zorder=3)
+        plt.text(x1, y1 - 15, str(i + 1), color=color, fontsize=14, fontweight='bold', ha='center')
+        plt.text(x2_shifted, y2 - 15, str(i + 1), color=color, fontsize=14, fontweight='bold', ha='center')
+    plt.axis('off')
+    plt.title(titulo if titulo else f'{len(pts1)} correspondencias seleccionadas')
+    plt.show()
+
+
+def plot_warp_result(img_src, img_dst, H, titulo=None, figsize=(12, 8)):
+    """Aplica una homografia H a img_src y la mezcla (50/50) con img_dst
+    para verificar visualmente que tan bien queda alineada la transformacion."""
+    h, w = img_dst.shape[:2]
+    warped = cv2.warpPerspective(img_src, H, (w, h))
+    blend = cv2.addWeighted(warped, 0.5, img_dst, 0.5, 0)
+
+    plt.figure(figsize=figsize)
+    plt.imshow(cv2.cvtColor(blend, cv2.COLOR_BGR2RGB))
+    plt.axis('off')
+    plt.title(titulo if titulo else 'Resultado del warping (mezcla 50/50 con el ancla)')
+    plt.show()
