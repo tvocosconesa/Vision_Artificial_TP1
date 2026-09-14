@@ -1,94 +1,7 @@
-from colorsys import hsv_to_rgb
+from graficos import *
 
-import numpy as np 
-from matplotlib import pyplot as plt
-import cv2
-
-
-def plot_matches(img1, kp1, img2, kp2, matches, titulo=None, figsize=(20, 10)):
-    """Grafica cada match con un color distinto y circulos en sus keypoints."""
-    img_matches = cv2.drawMatches(
-        img1, kp1, img2, kp2, [], None,
-        singlePointColor=None,
-        flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS
-    )
-
-    plt.figure(figsize=figsize)
-    plt.imshow(cv2.cvtColor(img_matches, cv2.COLOR_BGR2RGB))
-    for i, match in enumerate(matches):
-        # El paso aureo separa los tonos de conexiones consecutivas.
-        color = hsv_to_rgb((i * 0.618033988749895) % 1, 0.85, 1)
-        x1, y1 = kp1[match.queryIdx].pt
-        x2, y2 = kp2[match.trainIdx].pt
-        x2 += img1.shape[1]
-        plt.plot([x1, x2], [y1, y2], color=color, linewidth=1.2)
-        plt.scatter(
-            [x1, x2], [y1, y2], s=80, facecolors='none',
-            edgecolors=[color], linewidths=2, zorder=3
-        )
-    plt.axis('off')
-    plt.title(titulo if titulo else f'{len(matches)} matches encontrados')
-    plt.show()
-
-
-def plot_point_correspondences(img1, pts1, img2, pts2, titulo=None, figsize=(20, 10)):
-    """Grafica pares de puntos seleccionados manualmente entre dos imagenes,
-    numerando cada par y coloreandolo igual en ambos lados para poder
-    identificar visualmente la correspondencia."""
-    h1, w1 = img1.shape[:2]
-    canvas = np.concatenate([
-        cv2.cvtColor(img1, cv2.COLOR_BGR2RGB),
-        cv2.cvtColor(img2, cv2.COLOR_BGR2RGB)
-    ], axis=1)
-
-    plt.figure(figsize=figsize)
-    plt.imshow(canvas)
-    for i, ((x1, y1), (x2, y2)) in enumerate(zip(pts1, pts2)):
-        color = hsv_to_rgb((i * 0.618033988749895) % 1, 0.85, 1)
-        x2_shifted = x2 + w1
-        plt.plot([x1, x2_shifted], [y1, y2], color=color, linewidth=1.5, linestyle='--')
-        plt.scatter([x1, x2_shifted], [y1, y2], s=150, facecolors='none',
-                    edgecolors=[color], linewidths=2.5, zorder=3)
-        plt.text(x1, y1 - 15, str(i + 1), color=color, fontsize=14, fontweight='bold', ha='center')
-        plt.text(x2_shifted, y2 - 15, str(i + 1), color=color, fontsize=14, fontweight='bold', ha='center')
-    plt.axis('off')
-    plt.title(titulo if titulo else f'{len(pts1)} correspondencias seleccionadas')
-    plt.show()
-
-
-def plot_warp_result(img_src, img_dst, H, titulo=None, figsize=(12, 8)):
-    """Aplica una homografia H a img_src y la mezcla (50/50) con img_dst
-    para verificar visualmente que tan bien queda alineada la transformacion."""
-    h, w = img_dst.shape[:2]
-    warped = cv2.warpPerspective(img_src, H, (w, h))
-    blend = cv2.addWeighted(warped, 0.5, img_dst, 0.5, 0)
-
-    plt.figure(figsize=figsize)
-    plt.imshow(cv2.cvtColor(blend, cv2.COLOR_BGR2RGB))
-    plt.axis('off')
-    plt.title(titulo if titulo else 'Resultado del warping (mezcla 50/50 con el ancla)')
-    plt.show()
-
-
-def detectar_matches(descr1, descr2, ratio=0.75, plot=False,
-                      img1=None, kp1=None, img2=None, kp2=None, titulo=None):
-    """Matchea dos sets de descriptores con BFMatcher + ratio test de Lowe.
-
-    Si plot=True, ademas grafica los matches llamando a plot_matches
-    (para lo cual hay que pasar img1, kp1, img2, kp2).
-    """
-    bf = cv2.BFMatcher(cv2.NORM_L2)
-    matches = bf.knnMatch(descr1, descr2, k=2)
-
-    good_matches = [m for m, n in matches if m.distance < ratio * n.distance]
-
-    print(f'Matches buenos: {len(good_matches)} de {len(matches)} totales')
-
-    if plot:
-        plot_matches(img1, kp1, img2, kp2, good_matches, titulo=titulo)
-
-    return good_matches
-
+#-------------------------------------------------------------------------------------------------------------------------
+#ANMS
 
 def anms(keypoints, n_max):
     """
@@ -136,6 +49,29 @@ def anms(keypoints, n_max):
     selected_keypoints = [keypoints[i] for i in top_indices]
 
     return selected_keypoints, top_indices
+#-------------------------------------------------------------------------------------------------------------------------
+#matchear:
+
+def detectar_matches(descr1, descr2, ratio=0.75, plot=False,
+                      img1=None, kp1=None, img2=None, kp2=None, titulo=None):
+    """Matchea dos sets de descriptores con BFMatcher + ratio test de Lowe.
+
+    Si plot=True, ademas grafica los matches llamando a plot_matches
+    (para lo cual hay que pasar img1, kp1, img2, kp2).
+    """
+    bf = cv2.BFMatcher(cv2.NORM_L2)
+    matches = bf.knnMatch(descr1, descr2, k=2)
+
+    good_matches = [m for m, n in matches if m.distance < ratio * n.distance]
+
+    print(f'Matches buenos: {len(good_matches)} de {len(matches)} totales')
+
+    if plot:
+        plot_matches(img1, kp1, img2, kp2, good_matches, titulo=titulo)
+
+    return good_matches
+
+
 
 def graf_keypoints(img,keypoints,r=0):
     automatico=0
@@ -176,7 +112,7 @@ def calc_anms(img, n_max=200, _print=False):
     all_keys, all_desc = sift.detectAndCompute(img, None)
 
     kp_anms, idx_anms = anms(all_keys, n_max=n_max)
-    desc_anms = all_desc[idx_anms]   # <-- la línea que faltaba
+    desc_anms = all_desc[idx_anms]   
 
     if _print:
         print(f'Keypoints detectados originalmente: {len(all_keys)}')
@@ -334,40 +270,186 @@ def ransac_homografia(k_i, k_j, T=1000, t=3.0, semilla=None):
     return H_final, mejor_inliers
 
 
-def plot_point_correspondences(img1, pts1, img2, pts2, titulo=None, figsize=(20, 10)):
-    """Grafica pares de puntos seleccionados manualmente entre dos imagenes,
-    numerando cada par y coloreandolo igual en ambos lados para poder
-    identificar visualmente la correspondencia."""
-    h1, w1 = img1.shape[:2]
-    canvas = np.concatenate([
-        cv2.cvtColor(img1, cv2.COLOR_BGR2RGB),
-        cv2.cvtColor(img2, cv2.COLOR_BGR2RGB)
-    ], axis=1)
+def crosscheck_Lowe_Matching(desc1, desc2, trees=10, checks=50, threshold = 0.75):
+    """
+        Encuentra correspondencias confiables entre dos conjuntos de descriptores
+        combinando dos criterios de filtrado: ratio test de Lowe y verificación
+        cruzada (cross-check).
 
+        El matching se realiza en ambas direcciones (desc1 -> desc2 y desc2 -> desc1)
+        usando FLANN. En cada dirección se aplica primero el ratio test de Lowe para
+        descartar matches ambiguos (donde el 1er y 2do vecino más cercano están a
+        distancias similares). Luego, de los matches que sobreviven el ratio test en
+        ambas direcciones, se conservan solo aquellos que son mutuamente el mejor
+        match del otro (cross-check), es decir, correspondencias simétricas.
+
+        Parameters
+        ----------
+        desc1 : np.ndarray
+            Descriptores de la imagen 1 (consulta), de forma (N1, D).
+        desc2 : np.ndarray
+            Descriptores de la imagen 2 (candidatos), de forma (N2, D).
+        trees : int, optional
+            Cantidad de árboles KD-tree usados por el índice FLANN (default 10).
+        checks : int, optional
+            Cantidad de chequeos realizados durante la búsqueda FLANN; controla el
+            trade-off entre precisión y velocidad (default 50).
+        threshold : float, optional
+            Umbral del ratio test de Lowe. Un match se acepta si distance(1er vecino)
+            < threshold * distance(2do vecino) (default 0.75).
+
+        Returns
+        -------
+        list[cv2.DMatch]
+            Lista de matches que pasan tanto el ratio test como la verificación
+            cruzada en ambas direcciones. Cada DMatch tiene queryIdx referido a
+            desc1 y trainIdx referido a desc2.
+    """
+
+    dict_idxs = dict(algorithm=1, trees=trees)
+    search_params = dict(checks=checks)
+    flann = cv2.FlannBasedMatcher(dict_idxs, search_params)
+
+
+    good_matches_12 = []
+    good_matches_21 = []
+
+    # Dirección 1 -> 2 (mejor par de vecinos, k=2)
+    matches_12 = flann.knnMatch(desc1, desc2, k=2)
+
+    for m, n in matches_12:
+        if m.distance < threshold * n.distance:
+            good_matches_12.append(m)
+
+    # Dirección 2 -> 1
+    matches_21 = flann.knnMatch(desc2, desc1, k=2)
+
+    for m, n in matches_21:
+        if m.distance < threshold * n.distance:
+            good_matches_21.append(m)
+
+    # Para verificar simetría rápido, armamos un diccionario:
+    # para cada query en 2, cuál es su mejor match en 1
+    mejor_de_2_en_1 = {m.queryIdx: m.trainIdx for m in good_matches_21 }
+
+    final_good_matches = []
+    for match in good_matches_12:
+        if mejor_de_2_en_1.get(match.trainIdx) == match.queryIdx:
+            final_good_matches.append(match)
+
+    return final_good_matches
+
+
+def calcular_error_reproyeccion(H, kp_src, kp_dst, inlier_matches):
+    """
+    Calcula el error de reproyección promedio (en píxeles) para un conjunto de inliers.
+    """
+  
+    pts_src = np.array([kp_src[m.queryIdx].pt for m in inlier_matches], dtype=np.float64)
+    pts_dst = np.array([kp_dst[m.trainIdx].pt for m in inlier_matches], dtype=np.float64)
+
+    pts_proyectados = _proyectar_puntos(H, pts_src)
+
+    #Calcula la distancia euclidiana entre lo real y la proyección matemática
+    distancias = np.sqrt(np.sum((pts_dst - pts_proyectados) ** 2, axis=1))
+
+    error_medio = np.mean(distancias)
+    
+    return error_medio
+
+
+def calcular_lienzo_panoramica(shape_izq, shape_centro, shape_der, H_izq, H_der):
+    """
+    Calcula las dimensiones totales del lienzo y la matriz de traslación T
+    para evitar que las imágenes laterales se recorten.
+    """
+    h_i, w_i = shape_izq[:2]
+    h_c, w_c = shape_centro[:2]
+    h_d, w_d = shape_der[:2]
+
+    # esquinas 
+    corners_izq = np.float32([[0, 0], [0, h_i], [w_i, h_i], [w_i, 0]]).reshape(-1, 1, 2)
+    corners_centro = np.float32([[0, 0], [0, h_c], [w_c, h_c], [w_c, 0]]).reshape(-1, 1, 2)
+    corners_der = np.float32([[0, 0], [0, h_d], [w_d, h_d], [w_d, 0]]).reshape(-1, 1, 2)
+
+    # Proyectar las esquinas laterales al espacio central
+    corners_izq_warped = cv2.perspectiveTransform(corners_izq, H_izq)
+    corners_der_warped = cv2.perspectiveTransform(corners_der, H_der)
+
+    # Unir todas las esquinas y buscar límites globales
+    all_corners = np.concatenate((corners_centro, corners_izq_warped, corners_der_warped), axis=0)
+    [x_min, y_min] = np.int32(all_corners.min(axis=0).ravel() - 0.5)
+    [x_max, y_max] = np.int32(all_corners.max(axis=0).ravel() + 0.5)
+
+    # Definir tamaño y matriz de traslación
+    new_width = x_max - x_min
+    new_height = y_max - y_min
+    T = np.array([
+        [1, 0, -x_min],
+        [0, 1, -y_min],
+        [0, 0, 1]
+    ], dtype=np.float64)
+
+    return T, (new_width, new_height)
+
+
+def proyectar_vistas(img_izq, img_centro, img_der, H_izq, H_der, T, size):
+    """
+    Aplica las transformaciones geométricas (Homografía + Traslación) a las 3 imágenes.
+    """
+    warped_izq = cv2.warpPerspective(img_izq, T @ H_izq, size)
+    warped_centro = cv2.warpPerspective(img_centro, T, size)
+    warped_der = cv2.warpPerspective(img_der, T @ H_der, size)
+    
+    return warped_izq, warped_centro, warped_der
+
+
+def aplicar_blending_suave(warped_izq, warped_centro, warped_der):
+    """
+    Calcula los pesos mediante Distance Transform y fusiona las imágenes
+    sin dejar costuras duras.
+    """
+    # 1. Máscaras binarias
+    mask_izq = (cv2.cvtColor(warped_izq, cv2.COLOR_BGR2GRAY) > 0).astype(np.uint8)
+    mask_centro = (cv2.cvtColor(warped_centro, cv2.COLOR_BGR2GRAY) > 0).astype(np.uint8)
+    mask_der = (cv2.cvtColor(warped_der, cv2.COLOR_BGR2GRAY) > 0).astype(np.uint8)
+
+    # 2. Mapas de distancia
+    dist_izq = cv2.distanceTransform(mask_izq, cv2.DIST_L2, 3)
+    dist_centro = cv2.distanceTransform(mask_centro, cv2.DIST_L2, 3)
+    dist_der = cv2.distanceTransform(mask_der, cv2.DIST_L2, 3)
+
+    # 3. Suma y normalización (Pesos Alpha)
+    dist_sum = dist_izq + dist_centro + dist_der
+    dist_sum[dist_sum == 0] = 1.0  # Evitar división por cero
+    
+    alpha_izq = np.dstack([dist_izq / dist_sum] * 3)
+    alpha_centro = np.dstack([dist_centro / dist_sum] * 3)
+    alpha_der = np.dstack([dist_der / dist_sum] * 3)
+
+    # 4. Mezcla ponderada final
+    blended = (warped_izq * alpha_izq + warped_centro * alpha_centro + warped_der * alpha_der).astype(np.uint8)
+    return blended
+
+
+def plot_warp_3_imagenes(img_izq, img_centro, img_der, H_izq, H_der, titulo=None, figsize=(18, 6)):
+    """
+    grafica la panorámica.
+    """
+    # 1. Calcular límites
+    T, size = calcular_lienzo_panoramica(img_izq.shape, img_centro.shape, img_der.shape, H_izq, H_der)
+    
+    # 2. Proyectar
+    w_izq, w_centro, w_der = proyectar_vistas(img_izq, img_centro, img_der, H_izq, H_der, T, size)
+    
+    # 3. Fusionar
+    blended = aplicar_blending_suave(w_izq, w_centro, w_der)
+
+    # 4. Graficar
     plt.figure(figsize=figsize)
-    plt.imshow(canvas)
-    for i, ((x1, y1), (x2, y2)) in enumerate(zip(pts1, pts2)):
-        color = hsv_to_rgb((i * 0.618033988749895) % 1, 0.85, 1)
-        x2_shifted = x2 + w1
-        plt.plot([x1, x2_shifted], [y1, y2], color=color, linewidth=1.5, linestyle='--')
-        plt.scatter([x1, x2_shifted], [y1, y2], s=150, facecolors='none',
-                    edgecolors=[color], linewidths=2.5, zorder=3)
-        plt.text(x1, y1 - 15, str(i + 1), color=color, fontsize=14, fontweight='bold', ha='center')
-        plt.text(x2_shifted, y2 - 15, str(i + 1), color=color, fontsize=14, fontweight='bold', ha='center')
+    plt.imshow(cv2.cvtColor(blended, cv2.COLOR_BGR2RGB))
     plt.axis('off')
-    plt.title(titulo if titulo else f'{len(pts1)} correspondencias seleccionadas')
+    plt.title(titulo if titulo else 'Panorámica Final (Modularizada)')
     plt.show()
 
-
-def plot_warp_result(img_src, img_dst, H, titulo=None, figsize=(12, 8)):
-    """Aplica una homografia H a img_src y la mezcla (50/50) con img_dst
-    para verificar visualmente que tan bien queda alineada la transformacion."""
-    h, w = img_dst.shape[:2]
-    warped = cv2.warpPerspective(img_src, H, (w, h))
-    blend = cv2.addWeighted(warped, 0.5, img_dst, 0.5, 0)
-
-    plt.figure(figsize=figsize)
-    plt.imshow(cv2.cvtColor(blend, cv2.COLOR_BGR2RGB))
-    plt.axis('off')
-    plt.title(titulo if titulo else 'Resultado del warping (mezcla 50/50 con el ancla)')
-    plt.show()
+    return blended
