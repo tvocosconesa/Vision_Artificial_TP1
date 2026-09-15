@@ -432,7 +432,7 @@ def aplicar_blending_suave(warped_izq, warped_centro, warped_der):
     return blended
 
 
-def plot_warp_3_imagenes(img_izq, img_centro, img_der, H_izq, H_der, titulo=None, figsize=(18, 6)):
+def plot_warp_3_imagenes(img_izq, img_centro, img_der, H_izq, H_der, titulo=None, figsize=(20, 10)):
     """
     grafica la panorámica.
     """

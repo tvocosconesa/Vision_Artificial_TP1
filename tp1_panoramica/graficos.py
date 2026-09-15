@@ -86,22 +86,27 @@ def plot_point_correspondences(img1, pts1, img2, pts2, titulo=None, figsize=(20,
         color = hsv_to_rgb((i * 0.618033988749895) % 1, 0.85, 1)
         x2_shifted = x2 + w1
         plt.plot([x1, x2_shifted], [y1, y2], color=color, linewidth=1.5, linestyle='--')
-        plt.scatter([x1, x2_shifted], [y1, y2], s=150, facecolors='none',
-                    edgecolors=[color], linewidths=2.5, zorder=3)
-        plt.text(x1, y1 - 15, str(i + 1), color=color, fontsize=14, fontweight='bold', ha='center')
-        plt.text(x2_shifted, y2 - 15, str(i + 1), color=color, fontsize=14, fontweight='bold', ha='center')
+        
+        # Círculos 
+        plt.scatter([x1, x2_shifted], [y1, y2], s=60, facecolors='none',
+                    edgecolors=[color], linewidths=1.5, zorder=3)
+        
+        # Números 
+        plt.text(x1, y1 - 70, str(i + 1), color=color, fontsize=9, fontweight='bold', ha='center')
+        plt.text(x2_shifted, y2 - 70, str(i + 1), color=color, fontsize=9, fontweight='bold', ha='center')
+        
     plt.axis('off')
     plt.title(titulo if titulo else f'{len(pts1)} correspondencias seleccionadas')
     plt.show()
 
 
-def plot_warp_result(img_src, img_dst, H, titulo=None):
+def plot_warp_result(img_src, img_dst, H, titulo=None,figsize=(12,6)):
     """Aplica una homografia H a img_src y la mezcla (50/50) con img_dst
     para verificar visualmente que tan bien queda alineada la transformacion."""
     h, w = img_dst.shape[:2]
     warped = cv2.warpPerspective(img_src, H, (w, h))
     blend = cv2.addWeighted(warped, 0.5, img_dst, 0.5, 0)
-
+    plt.figure(figsize=figsize)
     plt.imshow(cv2.cvtColor(blend, cv2.COLOR_BGR2RGB))
     plt.axis('off')
     plt.title(titulo if titulo else 'Resultado del warping (mezcla 50/50 con el ancla)')
