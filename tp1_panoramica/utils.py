@@ -1,5 +1,5 @@
 from graficos import *
-import numpy as np
+
 #-------------------------------------------------------------------------------------------------------------------------
 #ANMS
 
@@ -108,7 +108,7 @@ def calc_anms(img, n_max=200, _print=False):
     """Detecta keypoints con SIFT, aplica ANMS y devuelve los keypoints
     seleccionados junto con SUS descriptores correspondientes (alineados
     índice a índice, que es lo que necesita el matching)."""
-    sift = cv2.SIFT_create(nfeatures=10000)  # sin limitar nfeatures, detectamos todos primero
+    sift = cv2.SIFT_create(nfeatures=16000)  # sin limitar nfeatures, detectamos todos primero
     all_keys, all_desc = sift.detectAndCompute(img, None)
 
     kp_anms, idx_anms = anms(all_keys, n_max=n_max)
@@ -453,6 +453,7 @@ def plot_warp_3_imagenes(img_izq, img_centro, img_der, H_izq, H_der, titulo=None
     plt.show()
 
     return blended
+
 
 def estimar_homografia(kp0, desc0, kp1, desc1, t=5.0, T=1000, _print=False):
     """
