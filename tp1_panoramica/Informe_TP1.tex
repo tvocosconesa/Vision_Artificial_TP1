@@ -152,7 +152,7 @@ aplicado de forma independiente e idéntica a los tres canales RGB (los pesos $W
 \section{Resultados}
 \label{sec:resultados}
 
-\begin{table}[htbp]
+\begin{tabla}[htbp]
 \caption{Matches, inliers y error de reproyección por par de imágenes}
 \begin{center}
 \begin{tabular}{l c c c c}
@@ -167,7 +167,7 @@ propio 2--1 & 456 & 257 & 56\% & 0.83 \\
 \end{tabular}
 \label{tab:resultados}
 \end{center}
-\end{table}
+\end{tabla}
 
 La Tabla~\ref{tab:resultados} resume los resultados cuantitativos ($T=1000$, $t=5$ px). El error de reproyección promedio sobre los \textit{inliers} finales es de pocos píxeles en ambos pares del conjunto \textit{cuadro}, lo que indica una $H$ bien ajustada. Sin embargo, el par cuadro\_2--cuadro\_1 tiene solo 9 \textit{inliers} sobre 56 matches iniciales (16\%): esto sugiere que el solapamiento real entre esas dos tomas es menor al 30--40\% sugerido, o que la combinación estricta de cross-check + Lowe está descartando correspondencias válidas en la zona con menos textura del fondo. Aun con pocos \textit{inliers}, 9 puntos son suficientes para una $H$ estable dado el bajo error de reproyección obtenido.
 
@@ -192,13 +192,5 @@ Las Fig.~\ref{fig:panorama_cuadro} y \ref{fig:panorama_propio} muestran los resu
 \section{Conclusiones}
 
 Se implementó un pipeline completo de \textit{stitching} panorámico --detección SIFT, A-NMS, matching con cross-check y test de Lowe, DLT manual, RANSAC, cálculo de lienzo óptimo y blending por distancia-- validado sobre un conjunto provisto y uno propio, con errores de reproyección finales de pocos píxeles. Como trabajo futuro, el número de iteraciones de RANSAC podría adaptarse dinámicamente según la proporción estimada de \textit{inliers} en lugar de fijarse en $T=1000$, y el pipeline de blending --actualmente escrito específicamente para 3 imágenes (izquierda-centro-derecha)-- podría generalizarse a $N$ imágenes arbitrarias.
-
-\begin{thebibliography}{00}
-\bibitem{lowe2004} D. G. Lowe, ``Distinctive Image Features from Scale-Invariant Keypoints,'' \textit{International Journal of Computer Vision}, vol. 60, no. 2, pp. 91--110, 2004.
-\bibitem{brown2005} M. Brown, R. Szeliski, and S. Winder, ``Multi-Image Matching using Multi-Scale Oriented Patches,'' in \textit{Proc. IEEE CVPR}, 2005.
-\bibitem{hartley1997} R. I. Hartley, ``In Defense of the Eight-Point Algorithm,'' \textit{IEEE Trans. Pattern Analysis and Machine Intelligence}, vol. 19, no. 6, pp. 580--593, 1997.
-\bibitem{fischler1981} M. A. Fischler and R. C. Bolles, ``Random Sample Consensus: A Paradigm for Model Fitting with Applications to Image Analysis and Automated Cartography,'' \textit{Communications of the ACM}, vol. 24, no. 6, pp. 381--395, 1981.
-\bibitem{szeliski2006} R. Szeliski, ``Image Alignment and Stitching: A Tutorial,'' \textit{Foundations and Trends in Computer Graphics and Vision}, vol. 2, no. 1, pp. 1--104, 2006.
-\end{thebibliography}
 
 \end{document}
