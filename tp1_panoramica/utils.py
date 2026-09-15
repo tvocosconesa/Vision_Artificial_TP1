@@ -453,3 +453,29 @@ def plot_warp_3_imagenes(img_izq, img_centro, img_der, H_izq, H_der, titulo=None
     plt.show()
 
     return blended
+
+def estimar_homografia(kp0, desc0, kp1, desc1, t=5.0, T=1000, _print=False):
+    """
+    Realiza el matching cruzado entre descriptores, filtra con RANSAC 
+    y devuelve la homografía final junto con los matches válidos (inliers).
+    """
+    
+    matches = crosscheck_Lowe_Matching(desc0, desc1)
+    
+    #Validación de seguridad para evitar que RANSAC colapse
+    if len(matches) < 4:
+        raise ValueError(f"Insuficientes matches: Se encontraron {len(matches)} y se necesitan al menos 4.")
+
+    #Extrae (x, y) de los keypoints emparejados
+    pts0 = np.array([kp0[m.queryIdx].pt for m in matches])
+    pts1 = np.array([kp1[m.trainIdx].pt for m in matches])
+
+    H, inliers_mask = ransac_homografia(pts0, pts1, t=t, T=T)
+    #Filtrar la lista de objetos DMatch conservando solo los inliers
+    inlier_matches = [m for m, es_inlier in zip(matches, inliers_mask) if es_inlier]
+    
+    if _print:
+        print(f'Matches iniciales con cross-check: {len(matches)}')
+        print(f'Inliers RANSAC: {len(inlier_matches)} de {len(matches)}')
+
+    return H, inlier_matches

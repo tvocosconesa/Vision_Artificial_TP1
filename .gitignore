@@ -5,3 +5,12 @@ __pycache__/
 
 .DS_Store
 __MACOSX/
+
+*.aux
+*.fls
+*.log
+*.fdb_latexmk
+*.bbl
+*.blg
+*.out
+*.synctex.gz
