@@ -70,18 +70,31 @@ Bajo cualquiera de estas dos hipótesis, la relación entre imágenes no depende
 
 El pipeline implementado sigue el esquema general del enunciado: detección y descripción de características, A-NMS, matching, estimación de homografía (manual y por RANSAC), cálculo del lienzo óptimo, y stitching con blending. Todo el código se encuentra en \texttt{tp1\_panoramica/utils.py} y \texttt{tp1\_panoramica/graficos.py}, orquestado desde \texttt{Tp1\_pano.ipynb}.
 
+\subsection{Preprocesamiento: reescalado de las imágenes}
+\label{sec:escalado}
+
+Las imágenes del conjunto \textit{cuadro} tienen una resolución nativa de $3072\times4096$ píxeles. A esa resolución SIFT detecta del orden de $1.4\times10^4$ \textit{keypoints} por imagen, en su gran mayoría asociados a detalles de textura muy finos del propio cuadro (trazos de pincel, grano de la tela). Estos puntos son poco estables entre tomas: pequeños cambios de perspectiva o de foco alteran su apariencia local y, por lo tanto, su descriptor, lo que se traduce en un alto porcentaje de correspondencias erróneas.
+
+Por este motivo las tres imágenes se reescalaron por un factor $s=0.25$ (resolución de trabajo $768\times1024$) con \texttt{cv2.resize} e interpolación \texttt{INTER\_AREA}, que promedia sobre el área del píxel de destino y actúa por lo tanto como un filtro pasa-bajos antes del submuestreo. El efecto es que SIFT deja de responder al detalle de alta frecuencia y detecta un número mucho menor de \textit{keypoints} ($\approx 500$ por imagen), asociados a estructuras de mayor escala (bordes del cuadro, contornos de las figuras, esquinas de la mesa), que son considerablemente más estables frente a los cambios de vista. Como se discute en la Sección~\ref{sec:resultados}, esto reduce la cantidad absoluta de correspondencias pero eleva fuertemente la proporción de \textit{inliers}, además de abaratar el costo computacional de todo el pipeline.
+
+Dos consecuencias de esta decisión merecen explicitarse. Primero, las 4 correspondencias del DLT manual fueron seleccionadas sobre las imágenes originales, por lo que se reescalan por el mismo factor $s$ antes de estimar la homografía, de modo que sigan señalando los mismos puntos físicos. Segundo, el error de reproyección queda expresado en píxeles de la \emph{resolución de trabajo}: un error de 2 px sobre las imágenes reescaladas equivale a $\approx 8$ px en la resolución original, por lo que los errores no son directamente comparables entre conjuntos procesados a distinta escala.
+
+El conjunto propio, en cambio, se procesa a su resolución nativa ($1200\times1600$), que ya es suficientemente moderada como para no requerir reescalado.
+
 \subsection{Detección y descripción de características}
 
 Se utilizó el detector-descriptor \textbf{SIFT} (\texttt{cv2.SIFT\_create}), por su invariancia a escala, rotación e iluminación y su buen desempeño frente a los cambios de perspectiva presentes en ambos conjuntos. SIFT opera internamente en escala de grises, por lo que no fue necesaria una conversión previa.
 
 \subsection{Supresión de No Máxima Adaptativa (A-NMS)}
 
-Para evitar que las correspondencias se concentren en regiones muy texturadas de la imagen (p.\,ej.\ el propio cuadro) en desmedro del resto, se implementó A-NMS: para cada \textit{keypoint} $k_i$ se calcula el radio de supresión $R_i$ como la menor distancia a otro \textit{keypoint} $k_j$ con respuesta estrictamente mayor ($r_j > r_i$), y se conservan los $N$ puntos con mayor $R_i$. A diferencia del pseudocódigo del enunciado, no se restringe primero a un conjunto de máximos locales en una vecindad fija: el radio robusto se calcula directamente sobre la totalidad de los \textit{keypoints} detectados. Esta variante (equivalente a la formulación original de Brown et al.) da el mismo resultado cualitativo --puntos mejor distribuidos espacialmente-- con una implementación vectorizada más simple. La Fig.~\ref{fig:anms} compara los \textit{keypoints} crudos de SIFT con los obtenidos tras A-NMS.
+Para evitar que las correspondencias se concentren en regiones muy texturadas de la imagen (p.\,ej.\ el propio cuadro) en desmedro del resto, se implementó A-NMS: para cada \textit{keypoint} $k_i$ se calcula el radio de supresión $R_i$ como la menor distancia a otro \textit{keypoint} $k_j$ con respuesta estrictamente mayor ($r_j > r_i$), y se conservan los $N$ puntos con mayor $R_i$. A diferencia del pseudocódigo del enunciado, no se restringe primero a un conjunto de máximos locales en una vecindad fija: el radio robusto se calcula directamente sobre la totalidad de los \textit{keypoints} detectados. Esta variante (equivalente a la formulación original de Brown et al.) da el mismo resultado cualitativo --puntos mejor distribuidos espacialmente-- con una implementación vectorizada más simple.
+
+Cabe notar que A-NMS solo actúa efectivamente cuando la cantidad de \textit{keypoints} detectados supera el tope $N$ solicitado. Tras el reescalado de la Sección~\ref{sec:escalado}, SIFT detecta $499$, $433$ y $504$ puntos en las tres imágenes del conjunto \textit{cuadro}, valores por debajo del $N=2000$ configurado, por lo que para este conjunto A-NMS se comporta como una identidad: el reescalado ya cumplió, por la vía del filtrado pasa-bajos, buena parte del rol de descarte que en el pipeline original recaía sobre A-NMS. El efecto del método sí es apreciable en el conjunto propio, donde se detectan $\approx 1.6\times10^4$ \textit{keypoints} por imagen y A-NMS los reduce a los $N=5000$ mejor distribuidos. La Fig.~\ref{fig:anms} ilustra el caso del conjunto \textit{cuadro}.
 
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=\linewidth]{fig_anms.jpg}
-\caption{Izquierda: todos los \textit{keypoints} de SIFT. Derecha: subconjunto tras A-NMS, mejor distribuido espacialmente.}
+\caption{Conjunto \textit{cuadro} a escala $s=0.25$. Izquierda: \textit{keypoints} crudos de SIFT (499). Derecha: salida de A-NMS. Al ser 499 menor que el tope $N=2000$, no se descarta ningún punto y ambos paneles coinciden.}
 \label{fig:anms}
 \end{figure}
 
@@ -152,26 +165,28 @@ aplicado de forma independiente e idéntica a los tres canales RGB (los pesos $W
 \section{Resultados}
 \label{sec:resultados}
 
-\begin{tabla}[htbp]
-\caption{Matches, inliers y error de reproyección por par de imágenes}
+\begin{table}[htbp]
+\caption{Matches, inliers y error de reproyección por par de imágenes. Los pares \textit{cuadro} se procesaron a $768\times1024$ (escala $s=0.25$) y los \textit{propio} a su resolución nativa $1200\times1600$; el error está expresado en píxeles de la resolución de trabajo de cada conjunto (ver Sección~\ref{sec:escalado}).}
 \begin{center}
 \begin{tabular}{l c c c c}
 \hline
 \textbf{Par} & \textbf{Matches} & \textbf{Inliers} & \textbf{\% Inliers} & \textbf{Error (px)} \\
 \hline
-cuadro 0--1 & 145 & 67 & 46\% & 2.50 \\
-cuadro 2--1 & 56 & 9 & 16\% & 1.43 \\
-propio 0--1 & 565 & 347 & 61\% & 2.03 \\
-propio 2--1 & 456 & 257 & 56\% & 0.83 \\
+cuadro 0--1 & 71 & 54 & 76\% & 1.69 \\
+cuadro 2--1 & 36 & 24 & 67\% & 2.07 \\
+propio 0--1 & 600 & 387 & 65\% & 1.95 \\
+propio 2--1 & 445 & 275 & 62\% & 1.89 \\
 \hline
 \end{tabular}
 \label{tab:resultados}
 \end{center}
-\end{tabla}
+\end{table}
 
-La Tabla~\ref{tab:resultados} resume los resultados cuantitativos ($T=1000$, $t=5$ px). El error de reproyección promedio sobre los \textit{inliers} finales es de pocos píxeles en ambos pares del conjunto \textit{cuadro}, lo que indica una $H$ bien ajustada. Sin embargo, el par cuadro\_2--cuadro\_1 tiene solo 9 \textit{inliers} sobre 56 matches iniciales (16\%): esto sugiere que el solapamiento real entre esas dos tomas es menor al 30--40\% sugerido, o que la combinación estricta de cross-check + Lowe está descartando correspondencias válidas en la zona con menos textura del fondo. Aun con pocos \textit{inliers}, 9 puntos son suficientes para una $H$ estable dado el bajo error de reproyección obtenido.
+La Tabla~\ref{tab:resultados} resume los resultados cuantitativos ($T=1000$, $t=5$ px). En ambos pares del conjunto \textit{cuadro} la proporción de \textit{inliers} es alta (76\% y 67\%) y el error de reproyección promedio sobre los \textit{inliers} finales es de aproximadamente 2 px, lo que indica una $H$ bien ajustada a las correspondencias que la sustentan.
 
-El conjunto propio, con mayor cantidad absoluta de textura visual (fachada del edificio, ventanas, árboles), produjo muchas más correspondencias y una proporción de \textit{inliers} más alta y estable en ambos pares, consistente con el análisis de la Sección~I: al aproximarse mejor a una rotación pura de cámara, el modelo de homografía es más preciso en más regiones de la imagen.
+Estos valores reflejan el efecto del reescalado descrito en la Sección~\ref{sec:escalado}. En una corrida preliminar a resolución completa, el par cuadro\_0--cuadro\_1 registraba 145 correspondencias iniciales pero solo un 46\% de \textit{inliers}, y el par cuadro\_2--cuadro\_1 apenas un 16\% (9 de 56). Al trabajar sobre las imágenes reescaladas, la cantidad absoluta de correspondencias baja aproximadamente a la mitad --hay muchos menos \textit{keypoints} disponibles-- pero la fracción que RANSAC valida como consistente con una única homografía sube en ambos pares por encima del 65\%. Es decir, el reescalado no mejora el pipeline por producir \emph{más} correspondencias sino por producir correspondencias \emph{mejores}: al suprimir el detalle de alta frecuencia sobre el que SIFT anclaba puntos inestables, las que sobreviven al matching describen estructuras que efectivamente se corresponden entre tomas.
+
+El conjunto propio, con mayor cantidad absoluta de textura visual (fachada del edificio, ventanas, árboles), produjo muchas más correspondencias en términos absolutos (600 y 445) y una proporción de \textit{inliers} alta y estable en ambos pares (65\% y 62\%), consistente con el análisis de la Sección~I: al aproximarse mejor a una rotación pura de cámara, el modelo de homografía es más preciso en más regiones de la imagen.
 
 \begin{figure}[htbp]
 \centering
