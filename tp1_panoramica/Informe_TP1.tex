@@ -35,7 +35,7 @@ zlarisson@udesa.edu.ar}
 \maketitle
 
 \begin{abstract}
-Se implementa un pipeline completo de construcción de imágenes panorámicas a partir de conjuntos de tres imágenes con solapamiento parcial. El método detecta características locales mediante SIFT, las redistribuye espacialmente con Supresión de No Máxima Adaptativa (A-NMS), establece correspondencias combinando el test de razón de Lowe con verificación cruzada, estima homografías tanto de forma manual (DLT sobre 4 correspondencias elegidas a mano) como robusta (RANSAC sobre el conjunto completo de correspondencias automáticas), calcula el tamaño óptimo del lienzo final y funde las imágenes proyectadas mediante pesos derivados de la transformada de distancia. Tanto el DLT como RANSAC se implementaron sin recurrir a las rutinas de estimación de OpenCV. El método se evaluó sobre el conjunto provisto \textit{cuadro} y sobre un conjunto propio de tres fotografías del campus de la universidad, obteniendo errores de reproyección finales de entre 1.7 y 2.0 píxeles y panorámicas sin costuras visibles en ambos casos.
+Se implementa un pipeline completo de construcción de imágenes panorámicas a partir de conjuntos de tres imágenes con solapamiento parcial. El método detecta características locales mediante SIFT, las redistribuye espacialmente con Supresión de No Máxima Adaptativa (A-NMS), establece correspondencias combinando el test de razón de Lowe con verificación cruzada, estima homografías tanto de forma manual (DLT sobre 4 correspondencias elegidas a mano) como robusta (RANSAC sobre el conjunto completo de correspondencias automáticas), calcula el tamaño óptimo del lienzo final y funde las imágenes proyectadas mediante pesos derivados de la transformada de distancia. Tanto el DLT como RANSAC se implementaron sin recurrir a las rutinas de estimación de OpenCV. El método se evaluó sobre el conjunto provisto \textit{cuadro} y sobre un conjunto propio de tres fotografías del campus de la universidad, logrando una alineación precisa entre las imágenes y panorámicas sin costuras visibles en ambos casos.
 \end{abstract}
 
 \section{Introducción}
@@ -54,7 +54,7 @@ donde $\sim$ denota igualdad a menos de un factor de escala, \textbf{si y solo s
 
 Bajo cualquiera de estas dos hipótesis, la relación entre imágenes no depende de la profundidad de la escena, por lo que una única matriz $H$ alcanza para alinear todos los puntos. Cuando ninguna de las dos se cumple exactamente --es decir, cuando la cámara se traslada \emph{y} la escena tiene profundidad variable-- aparece \textbf{paralaje}: objetos a distinta distancia de la cámara se desplazan de forma distinta entre las dos vistas, y ninguna homografía única puede alinearlos a todos simultáneamente. El síntoma visible es \emph{ghosting} (objetos duplicados o desalineados) en la zona de solapamiento, particularmente en los objetos más cercanos a la cámara.
 
-\textbf{Análisis de los conjuntos utilizados.} El conjunto \textit{cuadro} (Fig.~\ref{fig:dataset_cuadro}) corresponde a un cuadro colgado sobre una pared, fotografiado desde tres posiciones cercanas. La escena es aproximadamente plana --el cuadro domina el campo visual-- por lo que la hipótesis (1) se cumple razonablemente bien; el principal apartamiento proviene de que las tomas no son una rotación pura sino que incluyen un leve desplazamiento lateral de la cámara, lo que introduce paralaje respecto del borde de la mesa y de la caja apoyada en primer plano. El conjunto propio (fotos del campus, Fig.~\ref{fig:panorama_propio}) es el caso opuesto: la escena \emph{no} es plana (edificio, césped y árboles a distintas profundidades), pero las tres fotos fueron tomadas girando la cámara sobre un mismo punto aproximado, por lo que se aproxima mejor a la hipótesis (2). El paralaje residual se manifiesta principalmente en los árboles del primer plano, que son los objetos más cercanos a la cámara.
+\textbf{Análisis de los conjuntos utilizados.} El conjunto \textit{cuadro} (Fig.~\ref{fig:dataset_cuadro}) corresponde a un cuadro colgado sobre una pared, fotografiado desde tres posiciones cercanas. La escena es aproximadamente plana --el cuadro domina el campo visual-- por lo que la hipótesis (1) se cumple razonablemente bien; el principal apartamiento proviene de que las tomas no son una rotación pura sino que incluyen un leve desplazamiento lateral de la cámara, lo que introduce paralaje respecto del borde de la mesa y de la caja apoyada en primer plano. El conjunto propio (fotos del campus, Fig.~\ref{fig:panorama_propio}) es el caso opuesto: la escena \emph{no} es plana (edificio, césped y árboles), pero las tres fotos fueron tomadas girando la cámara sobre un mismo punto aproximado, por lo que se aproxima mejor a la hipótesis (2). El paralaje residual se manifiesta principalmente en los árboles del primer plano, que son los objetos más cercanos a la cámara.
 
 \begin{figure}[htbp]
 \centering
@@ -65,8 +65,6 @@ Bajo cualquiera de estas dos hipótesis, la relación entre imágenes no depende
 \label{fig:dataset_cuadro}
 \end{figure}
 
-El resto del informe sigue la numeración de la consigna. La Sección~\ref{sec:metodo} describe cada etapa del pipeline y los algoritmos implementados; la Sección~\ref{sec:resultados} reporta los resultados cuantitativos y visuales sobre ambos conjuntos; la Sección~\ref{sec:conclusiones} resume las conclusiones y las limitaciones identificadas. Todo el código se encuentra en \texttt{utils.py} y \texttt{graficos.py}, orquestado desde el notebook \texttt{Tp1\_pano.ipynb}.
-
 \section{Método}
 \label{sec:metodo}
 
@@ -75,18 +73,18 @@ El pipeline se compone de siete etapas: preprocesamiento, detección y descripci
 \subsection{Preprocesamiento: reescalado de las imágenes}
 \label{sec:escalado}
 
-Las imágenes del conjunto \textit{cuadro} tienen una resolución nativa de $3072\times4096$ píxeles. A esa resolución SIFT detecta del orden de $1.4\times10^4$ \textit{keypoints} por imagen, en su gran mayoría asociados a detalles de textura muy finos (trazos de pincel, grano de la tela, ruido del sensor). Estos puntos son poco estables entre tomas: pequeños cambios de perspectiva, foco o iluminación alteran su apariencia local y, por lo tanto, su descriptor, lo que se traduce en una alta proporción de correspondencias erróneas.
+Las imágenes del \textit{cuadro} tienen una resolución nativa muy alta. A esa resolución SIFT detecta una gran cantidad de \textit{keypoints} por imagen, en su gran mayoría asociados a detalles de textura muy finos (trazos de pincel, grano de la tela, ruido del sensor). Estos puntos son poco estables entre las imagenes: pequeños cambios de perspectiva, foco o iluminación alteran su apariencia local y, por lo tanto, su descriptor, lo que se traduce en una alta proporción de correspondencias erróneas.
 
-Por este motivo las tres imágenes se reescalaron por un factor $s=0.25$ (resolución de trabajo $768\times1024$) usando \texttt{cv2.resize} con interpolación \texttt{INTER\_AREA}. Esta interpolación promedia sobre el área del píxel de destino, por lo que actúa como un filtro pasa-bajos \emph{antes} del submuestreo, evitando el \textit{aliasing} que produciría un submuestreo directo. El efecto sobre la detección es que SIFT deja de responder al detalle de alta frecuencia y pasa a detectar $\approx 500$ \textit{keypoints} por imagen, anclados en estructuras de mayor escala (bordes del cuadro, contornos de las figuras pintadas, esquinas de la mesa), considerablemente más estables frente a cambios de vista. Como se cuantifica en la Sección~\ref{sec:resultados}, esto reduce la cantidad absoluta de correspondencias pero eleva fuertemente la proporción de \textit{inliers}, además de abaratar el costo de todo el pipeline.
+Por este motivo las tres imágenes se reescalaron por un factor $s=0.25$ usando \texttt{cv2.resize}. El efecto sobre la detección es que SIFT deja de responder al detalle de alta frecuencia y pasa a detectar menos \textit{keypoints} por imagen, anclados en estructuras de mayor escala (bordes del cuadro, contornos de las figuras pintadas, esquinas de la mesa), considerablemente más estables frente a cambios de vista. Como se cuantifica en la Sección~\ref{sec:resultados}, esto reduce la cantidad absoluta de correspondencias pero eleva fuertemente la proporción de \textit{inliers}, además de abaratar el costo de todo el pipeline.
 
-Dos consecuencias de esta decisión merecen explicitarse:
+Dos consecuencias de esta decisión:
 
 \begin{itemize}
-    \item Las 4 correspondencias del DLT manual (Sección~\ref{sec:dlt}) fueron marcadas sobre las imágenes originales, por lo que se reescalan por el mismo factor $s$ antes de estimar la homografía, de modo que sigan señalando los mismos puntos físicos. Así, cambiar $s$ no obliga a volver a elegirlas a mano.
+    \item Las 4 correspondencias del DLT manual fueron marcadas sobre las imágenes originales, por lo que se reescalan por el mismo factor $s$ antes de estimar la homografía, de modo que sigan señalando los mismos puntos físicos. Así, cambiar $s$ no obliga a volver a elegirlas a mano.
     \item El error de reproyección queda expresado en píxeles de la \emph{resolución de trabajo}. Un error de 2 px sobre las imágenes reescaladas equivale a $\approx 8$ px en la resolución original, por lo que los errores no son directamente comparables entre conjuntos procesados a distinta escala.
 \end{itemize}
 
-El conjunto propio, en cambio, se procesa a su resolución nativa ($1200\times1600$), que ya es lo bastante moderada como para no requerir reescalado.
+El conjunto propio, en cambio, se procesa a su resolución nativa, que ya es lo bastante moderada como para no requerir reescalado.
 
 \subsection{Detección y descripción de características}
 
@@ -105,10 +103,6 @@ R_i = \min_{j\,:\;r_j > r_i} \lVert \mathbf{x}_i - \mathbf{x}_j \rVert ,
 \label{eq:anms}
 \end{equation}
 donde $r_i$ es la respuesta (\textit{response}) del punto $i$ y $\mathbf{x}_i$ su posición. Interpretado geométricamente, $R_i$ es el radio del mayor disco centrado en $i$ dentro del cual $i$ es el punto más fuerte. Un punto aislado en una región poco texturada tiene un $R_i$ grande aunque su respuesta absoluta sea modesta; un punto rodeado de vecinos más fuertes, por bueno que sea, tiene un $R_i$ pequeño. Conservando los $N$ puntos de mayor $R_i$ se obtiene, entonces, una selección que privilegia simultáneamente la calidad local y la cobertura espacial. Al máximo global le corresponde $R_i = \infty$, ya que no existe ningún punto más fuerte que él.
-
-La implementación (\texttt{anms} en \texttt{utils.py}) es completamente vectorizada: se arma la matriz de distancias cuadradas entre todos los pares de puntos, se enmascara con la condición $r_j > r_i$ reemplazando por $\infty$ las entradas que no la cumplen, y se toma el mínimo por filas. Como el ordenamiento por $R_i$ y por $R_i^2$ es el mismo, se trabaja directamente con distancias al cuadrado y se evita la raíz. Respecto de la formulación original de Brown et al., se omite el factor de robustez $c_{\text{robust}}$ --que relaja la condición a $r_j > c\cdot r_i$ con $c\approx0.9$-- y se usa la comparación estricta. Respecto del pseudocódigo del enunciado, no se restringe primero a un conjunto de máximos locales en una vecindad fija: el radio se calcula directamente sobre la totalidad de los puntos detectados, lo cual da el mismo resultado cualitativo con una implementación más simple.
-
-El costo de esta vectorización es una complejidad de memoria $O(n^2)$ en la cantidad de puntos detectados, lo que obliga a acotar $n$. Por ese motivo la detección se limita a $16000$ \textit{keypoints} por imagen; los valores de $\approx 1.6\times10^4$ que se reportan para el conjunto propio corresponden a ese tope y no a una medición del total realmente presente en la imagen.
 
 La Fig.~\ref{fig:anms} muestra el efecto del método sobre \textit{cuadro\_0}, donde los 499 puntos detectados se reducen a $N=200$. Los grumos más densos sobre las zonas de mayor textura se aligeran y la cobertura sobre la superficie del cuadro queda notablemente más pareja. Conviene notar que la pared y la mesa siguen casi vacías: A-NMS solo puede redistribuir entre los puntos que SIFT detectó, no crear puntos nuevos donde no hay gradiente que detectar. Para el conjunto propio se usó $N=5000$, acorde a la mayor cantidad de puntos disponibles.
 
@@ -135,19 +129,19 @@ Sobre esa búsqueda se aplican dos criterios de filtrado combinados:
     \item \textbf{Verificación cruzada (\textit{cross-check}).} El matching se corre en ambas direcciones y se conserva un par $(i,j)$ solo si $j$ es el mejor match de $i$ \emph{y} simultáneamente $i$ es el mejor match de $j$. Esto elimina las asociaciones asimétricas, en las que un punto que no tiene verdadero par en la otra imagen --por caer fuera de la zona de solapamiento, por ejemplo-- se asocia igualmente al descriptor más parecido que logre encontrar.
 \end{itemize}
 
-La combinación de ambos es más estricta que cualquiera por separado: reduce el número final de correspondencias pero eleva fuertemente su confiabilidad, lo que le deja menos trabajo a RANSAC. La Fig.~\ref{fig:matches} ilustra el resultado para el par \textit{cuadro\_0--cuadro\_1}. Cabe aclarar que esta figura comparativa se generó sobre el conjunto \emph{completo} de descriptores de SIFT, donde el contraste contra el matching sin filtrar se aprecia mejor por haber muchas más correspondencias en juego; el pipeline definitivo aplica exactamente la misma función sobre los descriptores de A-NMS.
+La combinación de ambos es más estricta que cualquiera por separado: reduce el número final de correspondencias pero eleva fuertemente su confiabilidad, lo que le deja menos trabajo a RANSAC. El efecto es medible sobre el par \textit{cuadro\_0--cuadro\_1}: de los 499 descriptores de \textit{cuadro\_0}, 104 superan el test de Lowe por sí solo, y de esos sobreviven 71 al exigir además simetría. Es decir, casi un tercio de los matches que Lowe acepta resultan ser asociaciones asimétricas. La Fig.~\ref{fig:matches} muestra esas 71 correspondencias. Cabe aclarar que se calcularon sobre el conjunto \emph{completo} de descriptores de SIFT, donde el efecto del filtrado se cuantifica mejor por haber muchas más correspondencias en juego; el pipeline definitivo aplica exactamente la misma función sobre los descriptores de A-NMS.
 
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=\linewidth]{fig_matches.jpg}
-\caption{Correspondencias del par \textit{cuadro\_0--cuadro\_1} tras aplicar cross-check y test de Lowe. Las líneas sobrevivientes son marcadamente más paralelas y consistentes entre sí que las del matching sin filtrar.}
+\caption{Las 71 correspondencias del par \textit{cuadro\_0--cuadro\_1} que sobreviven a la combinación de cross-check y test de Lowe, calculadas sobre el conjunto completo de descriptores de SIFT (104 pasaban el test de Lowe solo).}
 \label{fig:matches}
 \end{figure}
 
 \subsection{Estimación manual de la homografía (DLT)}
 \label{sec:dlt}
 
-Una homografía tiene 8 grados de libertad (9 entradas menos el factor de escala global), y cada correspondencia de puntos aporta 2 ecuaciones independientes, por lo que se necesitan al menos 4 correspondencias no colineales para determinarla. En esta etapa esos 4 pares se eligieron \textbf{a mano} sobre las imágenes (Fig.~\ref{fig:dlt_puntos}), cubriendo distintas zonas del cuadro y evitando que queden alineados: tres puntos casi colineales dejan el sistema mal condicionado y producen una $H$ inestable.
+Una homografía tiene 8 grados de libertad (9 entradas menos el factor de escala global), y cada correspondencia de puntos aporta 2 ecuaciones independientes, por lo que se necesitan al menos 4 correspondencias no colineales para determinarla. En esta etapa esos 4 pares se eligieron \textbf{a mano} sobre las imágenes (Fig.~\ref{fig:dlt_puntos}), atendiendo a tres criterios. El primero y más importante es la \textbf{coplanaridad}: la escena del conjunto \textit{cuadro} no es plana --conviven la pared, la superficie del cuadro, la mesa y la caja del primer plano a distintas profundidades-- y una homografía solo describe correctamente el mapeo de \emph{un} plano. Por eso los cuatro puntos se tomaron íntegramente sobre la superficie del cuadro; mezclar un punto de la mesa con tres del cuadro haría que no exista ninguna $H$ capaz de satisfacer las cuatro correspondencias a la vez, y el DLT devolvería igualmente una solución, pero sin sentido geométrico. El segundo es la \textbf{no colinealidad}: tres puntos casi alineados dejan el sistema mal condicionado y producen una $H$ inestable. El tercero es la \textbf{dispersión} dentro de ese plano: con los 4 puntos concentrados en una región pequeña la homografía queda bien ajustada allí pero extrapola mal al resto de la imagen. A esto se suma que, al ser solo 4 pares y no haber redundancia, el error de localización de cada clic se traslada directamente a $H$: conviene elegir esquinas o cruces bien definidos y no puntos sobre bordes suaves.
 
 El algoritmo \textbf{DLT} (\textit{Direct Linear Transformation}) parte de reescribir \eqref{eq:homografia} de forma que desaparezca el factor de escala desconocido. Como $\mathbf{x}'$ y $H\mathbf{x}$ son paralelos, su producto vectorial es nulo:
 \begin{equation}
@@ -185,7 +179,7 @@ La Fig.~\ref{fig:dlt_warp} muestra el resultado de proyectar \textit{cuadro\_0} 
 
 El matching automático, aun filtrado con Lowe y cross-check, conserva algunas correspondencias erróneas. El problema es que el ajuste por cuadrados mínimos del DLT no es robusto: un solo \textit{outlier} groseramente equivocado puede desviar arbitrariamente la solución, porque el error que aporta entra al costo igual que el de cualquier otra correspondencia. \textbf{RANSAC} (\textit{Random Sample Consensus}) resuelve esto invirtiendo la lógica: en lugar de ajustar un modelo a todos los datos y confiar en que los errores se compensen, genera muchos modelos a partir de muestras mínimas y se queda con el que más datos logra explicar.
 
-La implementación (\texttt{ransac\_homografia}) sigue el Algoritmo 2 del enunciado. En cada una de $T$ iteraciones:
+La implementación sigue el Algoritmo del enunciado. En cada una de $T$ iteraciones:
 
 \begin{enumerate}
     \item Se muestrean al azar y sin reposición 4 correspondencias, el mínimo necesario para determinar una homografía.
@@ -206,13 +200,13 @@ Se usaron $T=1000$ iteraciones y $t=5$ píxeles. La elección de $T$ es delibera
 p = 1 - \left(1 - w^{s}\right)^{T},
 \label{eq:ransac_prob}
 \end{equation}
-con $s=4$ el tamaño de la muestra y $w$ la fracción de \textit{inliers}. Para el par menos favorable de nuestros datos ($w\approx0.59$), alcanzar $p=0.99$ requiere apenas $T\approx36$ iteraciones; con $T=1000$ el éxito es prácticamente seguro y el costo sigue siendo despreciable frente al resto del pipeline. La Fig.~\ref{fig:ransac} muestra los \textit{inliers} finales de ambos pares del conjunto \textit{cuadro}: las líneas son casi perfectamente paralelas entre sí, reflejando que todas describen el mismo movimiento aparente entre las tomas.
+con $s=4$ el tamaño de la muestra y $w$ la fracción de \textit{inliers}. Para el par menos favorable de nuestros datos ($w\approx0.59$), alcanzar $p=0.99$ requiere apenas $T\approx36$ iteraciones; con $T=1000$ el éxito es prácticamente seguro y el costo sigue siendo despreciable frente al resto del pipeline. La Fig.~\ref{fig:ransac} muestra los \textit{inliers} finales de ambos pares del conjunto \textit{cuadro}: las líneas varían de forma suave y continua en dirección y longitud, sin cruces bruscos ni direcciones aisladas que se aparten del resto. Conviene notar que no cabría esperar que fueran paralelas: solo una traslación pura entre las tomas produciría un campo de desplazamiento uniforme, mientras que una homografía con componente proyectiva desplaza cada punto de manera distinta según su posición. Lo que valida el ajuste es entonces la \emph{regularidad} del campo de desplazamiento, no su uniformidad.
 
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=\linewidth]{fig_ransac_01.jpg}\\[2pt]
 \includegraphics[width=\linewidth]{fig_ransac_21.jpg}
-\caption{Correspondencias clasificadas como \textit{inlier} por RANSAC, las únicas usadas para calcular la $H$ final. Arriba: \textit{cuadro\_0--cuadro\_1}. Abajo: \textit{cuadro\_2--cuadro\_1}.}
+\caption{Correspondencias clasificadas como \textit{inlier} por RANSAC, las únicas usadas para calcular la $H$ final. El campo de desplazamiento varía de forma regular con la posición, como corresponde a una homografía con componente proyectiva. Arriba: \textit{cuadro\_0--cuadro\_1}. Abajo: \textit{cuadro\_2--cuadro\_1}.}
 \label{fig:ransac}
 \end{figure}
 
@@ -224,8 +218,7 @@ La solución implementada calcula el \textit{bounding box} exacto del resultado.
 \begin{equation}
 T = \begin{pmatrix} 1 & 0 & -x_{min} \\ 0 & 1 & -y_{min} \\ 0 & 0 & 1 \end{pmatrix}
 \end{equation}
-que se antepone a cada transformación antes de aplicar \texttt{cv2.warpPerspective}: las laterales se proyectan con $T\!\cdot\!H_{izq}$ y $T\!\cdot\!H_{der}$, y el ancla con $T$ sola. De este modo todo el contenido queda en coordenadas no negativas y el lienzo tiene exactamente el tamaño necesario. Para el conjunto \textit{cuadro} el resultado fue un lienzo de $1496\times1658$ px con una traslación de $(410, 202)$ px.
-
+que se antepone a cada transformación antes de aplicar \texttt{cv2.warpPerspective}: las laterales se proyectan con $T\!\cdot\!H_{izq}$ y $T\!\cdot\!H_{der}$, y el ancla con $T$ sola. De este modo todo el contenido queda en coordenadas no negativas y el lienzo tiene exactamente el tamaño necesario.
 \subsection{Stitching y blending}
 
 Proyectadas las tres imágenes sobre el lienzo común, resta combinarlas. Pegarlas una sobre otra dejaría una costura dura y visible en las zonas de solapamiento, porque las tomas difieren en exposición, balance de blancos y viñeteo.
@@ -242,7 +235,7 @@ El criterio tiene una lectura natural: en la zona de solapamiento, la imagen que
 \label{sec:resultados}
 
 \begin{table}[htbp]
-\caption{Matches, inliers y error de reproyección por par de imágenes. Los pares \textit{cuadro} se procesaron a $768\times1024$ (escala $s=0.25$, $N=200$) y los \textit{propio} a su resolución nativa $1200\times1600$ ($N=5000$); el error está expresado en píxeles de la resolución de trabajo de cada conjunto (ver Sección~\ref{sec:escalado}).}
+\caption{Matches, inliers y error de reproyección por par de imágenes.}
 \begin{center}
 \begin{tabular}{l c c c c}
 \hline
@@ -278,7 +271,7 @@ La Tabla~\ref{tab:resultados} resume los resultados cuantitativos, obtenidos con
 \label{fig:panorama_propio}
 \end{figure}
 
-Las Fig.~\ref{fig:panorama_cuadro} y \ref{fig:panorama_propio} muestran los resultados finales. En ambos casos el lienzo tiene el tamaño exacto --sin bordes negros sobrantes ni recorte de contenido-- y la transición entre imágenes es suave, sin costuras apreciables a simple vista. En el conjunto \textit{cuadro} la superficie del cuadro se lee como una sola pieza continua a lo largo de toda la panorámica. En el conjunto propio se observa un leve \textit{ghosting} en los árboles más cercanos a la cámara, exactamente donde el análisis geométrico de la Sección~I anticipaba que aparecería: son los objetos de menor profundidad y, por lo tanto, los más sensibles a que la rotación de la cámara no haya sido perfectamente pura.
+Las Fig.~\ref{fig:panorama_cuadro} y \ref{fig:panorama_propio} muestran los resultados finales. En ambos casos el lienzo coincide exactamente con el \textit{bounding box} del contenido proyectado: no hay recorte de las imágenes transformadas ni margen excedente, en el sentido de que el contenido toca los cuatro bordes del lienzo. Las zonas negras visibles en las esquinas no son margen sobrante sino el complemento del polígono que resulta de proyectar cada imagen por su homografía; son inevitables con un lienzo rectangular y solo podrían eliminarse recortando contenido válido. La transición entre imágenes es suave, sin costuras apreciables a simple vista. En el conjunto \textit{cuadro} la superficie del cuadro se lee como una sola pieza continua a lo largo de toda la panorámica. En el conjunto propio se observa un leve \textit{ghosting} en los árboles más cercanos a la cámara, exactamente donde el análisis geométrico de la Sección~I anticipaba que aparecería: son los objetos de menor profundidad y, por lo tanto, los más sensibles a que la rotación de la cámara no haya sido perfectamente pura.
 
 \section{Conclusiones}
 \label{sec:conclusiones}
