@@ -5,6 +5,8 @@ import numpy as np
 from matplotlib import pyplot as plt
 import cv2
 
+def resize_img(img, escala):
+    return cv2.resize(img, None, fx=escala, fy=escala, interpolation=cv2.INTER_AREA)
 
 def plot_matches(img1, kp1, img2, kp2, matches, titulo=None, figsize=(20, 10)):
     """Grafica cada match con un color distinto y circulos en sus keypoints."""
