@@ -14,6 +14,16 @@
 \graphicspath{{figs/}{inputs/}{outputs/}}
 \def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
     T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+% --- ajustes de figuras y floats para respetar el limite de 6 paginas ---
+\renewcommand{\topfraction}{0.92}
+\renewcommand{\bottomfraction}{0.85}
+\renewcommand{\textfraction}{0.06}
+\renewcommand{\floatpagefraction}{0.80}
+\setlength{\textfloatsep}{5pt plus 2pt minus 2pt}
+\setlength{\floatsep}{4pt plus 2pt minus 2pt}
+\setlength{\intextsep}{4pt plus 2pt minus 2pt}
+\setlength{\abovecaptionskip}{2pt}
+
 \begin{document}
 
 \title{Construcción de Imágenes Panorámicas mediante Homografías: \\ Detección de Características, DLT y RANSAC}
@@ -54,13 +64,13 @@ donde $\sim$ denota igualdad a menos de un factor de escala, \textbf{si y solo s
 
 Bajo cualquiera de estas dos hipótesis, la relación entre imágenes no depende de la profundidad de la escena, por lo que una única matriz $H$ alcanza para alinear todos los puntos. Cuando ninguna de las dos se cumple exactamente --es decir, cuando la cámara se traslada \emph{y} la escena tiene profundidad variable-- aparece \textbf{paralaje}: objetos a distinta distancia de la cámara se desplazan de forma distinta entre las dos vistas, y ninguna homografía única puede alinearlos a todos simultáneamente. El síntoma visible es \emph{ghosting} (objetos duplicados o desalineados) en la zona de solapamiento, particularmente en los objetos más cercanos a la cámara.
 
-\textbf{Análisis de los conjuntos utilizados.} El conjunto \textit{cuadro} (Fig.~\ref{fig:dataset_cuadro}) corresponde a un cuadro colgado sobre una pared, fotografiado desde tres posiciones cercanas. La escena es aproximadamente plana --el cuadro domina el campo visual-- por lo que la hipótesis (1) se cumple razonablemente bien; el principal apartamiento proviene de que las tomas no son una rotación pura sino que incluyen un leve desplazamiento lateral de la cámara, lo que introduce paralaje respecto del borde de la mesa y de la caja apoyada en primer plano. El conjunto propio (fotos del campus, Fig.~\ref{fig:panorama_propio}) es el caso opuesto: la escena \emph{no} es plana (edificio, césped y árboles), pero las tres fotos fueron tomadas girando la cámara sobre un mismo punto aproximado, por lo que se aproxima mejor a la hipótesis (2). El paralaje residual se manifiesta principalmente en los árboles del primer plano, que son los objetos más cercanos a la cámara.
+\textbf{Análisis de los conjuntos utilizados.} El conjunto \textit{cuadro} (Fig.~\ref{fig:dataset_cuadro}) corresponde a un cuadro colgado sobre una pared, fotografiado desde tres posiciones cercanas. La escena es aproximadamente plana --el cuadro domina el campo visual-- por lo que la hipótesis (1) se cumple razonablemente bien; el principal apartamiento proviene de que las tomas no son una rotación pura sino que incluyen un leve desplazamiento lateral de la cámara, lo que introduce paralaje respecto del borde de la mesa y de la caja apoyada en primer plano. El conjunto propio (fotos del campus, Fig.~\ref{fig:panoramas}) es el caso opuesto: la escena \emph{no} es plana (edificio, césped y árboles), pero las tres fotos fueron tomadas girando la cámara sobre un mismo punto aproximado, por lo que se aproxima mejor a la hipótesis (2). El paralaje residual se manifiesta principalmente en los árboles del primer plano, que son los objetos más cercanos a la cámara.
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.32\linewidth]{cuadro_0_thumb.jpg}
-\includegraphics[width=0.32\linewidth]{cuadro_1_thumb.jpg}
-\includegraphics[width=0.32\linewidth]{cuadro_2_thumb.jpg}
+\includegraphics[width=0.28\linewidth]{cuadro_0_thumb.jpg}
+\includegraphics[width=0.28\linewidth]{cuadro_1_thumb.jpg}
+\includegraphics[width=0.28\linewidth]{cuadro_2_thumb.jpg}
 \caption{Conjunto \textit{cuadro}: tres tomas con solapamiento parcial de un cuadro colgado sobre una pared. La toma central se usa como ancla.}
 \label{fig:dataset_cuadro}
 \end{figure}
@@ -108,7 +118,7 @@ La Fig.~\ref{fig:anms} muestra el efecto del método sobre \textit{cuadro\_0}, d
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=\linewidth]{fig_anms.jpg}
+\includegraphics[width=0.918\linewidth]{fig_anms.jpg}
 \caption{Conjunto \textit{cuadro} a escala $s=0.25$. Izquierda: los 499 \textit{keypoints} crudos de SIFT, amontonados sobre las zonas de mayor textura. Derecha: los $N=200$ seleccionados por A-NMS, con una cobertura más uniforme.}
 \label{fig:anms}
 \end{figure}
@@ -133,7 +143,7 @@ La combinación de ambos es más estricta que cualquiera por separado: reduce el
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=\linewidth]{fig_matches.jpg}
+\includegraphics[width=0.986\linewidth]{fig_matches.jpg}
 \caption{Las 71 correspondencias del par \textit{cuadro\_0--cuadro\_1} que sobreviven a la combinación de cross-check y test de Lowe, calculadas sobre el conjunto completo de descriptores de SIFT (104 pasaban el test de Lowe solo).}
 \label{fig:matches}
 \end{figure}
@@ -162,14 +172,14 @@ La Fig.~\ref{fig:dlt_warp} muestra el resultado de proyectar \textit{cuadro\_0} 
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=\linewidth]{fig_dlt_puntos.jpg}
+\includegraphics[width=0.829\linewidth]{fig_dlt_puntos.jpg}
 \caption{Las cuatro correspondencias elegidas manualmente entre \textit{cuadro\_0} y \textit{cuadro\_1}. Cada número y color identifica un par que señala la misma esquina física en ambas tomas.}
 \label{fig:dlt_puntos}
 \end{figure}
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.75\linewidth]{fig_dlt_warp.jpg}
+\includegraphics[width=0.515\linewidth]{fig_dlt_warp.jpg}
 \caption{Mezcla 50/50 de \textit{cuadro\_1} con \textit{cuadro\_0} proyectada mediante la $H$ estimada por DLT manual. La alineación es buena sobre el cuadro, con un leve doble contorno al alejarse de los 4 puntos usados.}
 \label{fig:dlt_warp}
 \end{figure}
@@ -204,8 +214,8 @@ con $s=4$ el tamaño de la muestra y $w$ la fracción de \textit{inliers}. Para 
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=\linewidth]{fig_ransac_01.jpg}\\[2pt]
-\includegraphics[width=\linewidth]{fig_ransac_21.jpg}
+\includegraphics[width=0.941\linewidth]{fig_ransac_01.jpg}\\[2pt]
+\includegraphics[width=0.941\linewidth]{fig_ransac_21.jpg}
 \caption{Correspondencias clasificadas como \textit{inlier} por RANSAC, las únicas usadas para calcular la $H$ final. El campo de desplazamiento varía de forma regular con la posición, como corresponde a una homografía con componente proyectiva. Arriba: \textit{cuadro\_0--cuadro\_1}. Abajo: \textit{cuadro\_2--cuadro\_1}.}
 \label{fig:ransac}
 \end{figure}
@@ -259,19 +269,13 @@ La Tabla~\ref{tab:resultados} resume los resultados cuantitativos, obtenidos con
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.8\linewidth]{fig_panorama_cuadro.jpg}
-\caption{Panorámica final del conjunto \textit{cuadro}, con blending por transformada de distancia.}
-\label{fig:panorama_cuadro}
+\includegraphics[width=0.582\linewidth]{fig_panorama_cuadro.jpg}\\[2pt]
+\includegraphics[width=0.784\linewidth]{fig_panorama_foto.jpg}
+\caption{Panorámicas finales, con blending por transformada de distancia. Arriba: conjunto \textit{cuadro}. Abajo: conjunto propio (campus de la universidad); el leve \textit{ghosting} en los árboles del primer plano es consistente con el paralaje residual discutido en la Sección~I.}
+\label{fig:panoramas}
 \end{figure}
 
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=\linewidth]{fig_panorama_foto.jpg}
-\caption{Panorámica final del conjunto propio (campus de la universidad). El leve \textit{ghosting} en los árboles del primer plano es consistente con el paralaje residual discutido en la Sección~I.}
-\label{fig:panorama_propio}
-\end{figure}
-
-Las Fig.~\ref{fig:panorama_cuadro} y \ref{fig:panorama_propio} muestran los resultados finales. En ambos casos el lienzo coincide exactamente con el \textit{bounding box} del contenido proyectado: no hay recorte de las imágenes transformadas ni margen excedente, en el sentido de que el contenido toca los cuatro bordes del lienzo. Las zonas negras visibles en las esquinas no son margen sobrante sino el complemento del polígono que resulta de proyectar cada imagen por su homografía; son inevitables con un lienzo rectangular y solo podrían eliminarse recortando contenido válido. La transición entre imágenes es suave, sin costuras apreciables a simple vista. En el conjunto \textit{cuadro} la superficie del cuadro se lee como una sola pieza continua a lo largo de toda la panorámica. En el conjunto propio se observa un leve \textit{ghosting} en los árboles más cercanos a la cámara, exactamente donde el análisis geométrico de la Sección~I anticipaba que aparecería: son los objetos de menor profundidad y, por lo tanto, los más sensibles a que la rotación de la cámara no haya sido perfectamente pura.
+La Fig.~\ref{fig:panoramas} muestra los resultados finales. En ambos casos el lienzo coincide exactamente con el \textit{bounding box} del contenido proyectado: no hay recorte de las imágenes transformadas ni margen excedente, en el sentido de que el contenido toca los cuatro bordes del lienzo. Las zonas negras visibles en las esquinas no son margen sobrante sino el complemento del polígono que resulta de proyectar cada imagen por su homografía; son inevitables con un lienzo rectangular y solo podrían eliminarse recortando contenido válido. La transición entre imágenes es suave, sin costuras apreciables a simple vista. En el conjunto \textit{cuadro} la superficie del cuadro se lee como una sola pieza continua a lo largo de toda la panorámica. En el conjunto propio se observa un leve \textit{ghosting} en los árboles más cercanos a la cámara, exactamente donde el análisis geométrico de la Sección~I anticipaba que aparecería: son los objetos de menor profundidad y, por lo tanto, los más sensibles a que la rotación de la cámara no haya sido perfectamente pura.
 
 \section{Conclusiones}
 \label{sec:conclusiones}
@@ -281,5 +285,10 @@ Se implementó un pipeline completo de \textit{stitching} panorámico --detecci�
 El hallazgo metodológico más relevante del trabajo fue el impacto del reescalado de las imágenes de entrada. Reducir la resolución a un cuarto antes de detectar características, lejos de degradar el resultado, elevó la proporción de \textit{inliers} del 46\% y 16\% al 70\% y 59\% en los dos pares del conjunto \textit{cuadro}. La explicación es que el filtrado pasa-bajos implícito en el submuestreo elimina el detalle de alta frecuencia sobre el cual SIFT ancla puntos poco repetibles entre tomas. Esto sugiere que, para escenas con textura fina, la resolución de trabajo es un hiperparámetro tan relevante como los umbrales del propio matching.
 
 Entre las limitaciones identificadas, la implementación vectorizada de A-NMS tiene complejidad de memoria $O(n^2)$ en la cantidad de \textit{keypoints}, lo que obliga a acotar la detección y sería el primer punto a optimizar --por ejemplo, mediante una estructura espacial que evite calcular todas las distancias por pares--. El umbral de \textit{inlier} $t$ está expresado en píxeles de la resolución de trabajo, por lo que no es directamente transferible entre conjuntos procesados a distinta escala. La cantidad de iteraciones de RANSAC está fijada en $T=1000$ en lugar de adaptarse dinámicamente a la proporción de \textit{inliers} estimada sobre la marcha, lo cual, según \eqref{eq:ransac_prob}, permitiría terminar en unas pocas decenas de iteraciones sin pérdida de garantías. Finalmente, el módulo de blending está escrito específicamente para tres imágenes en disposición izquierda--centro--derecha; generalizarlo a $N$ imágenes arbitrarias requeriría reemplazar el encadenamiento fijo de homografías por un grafo de conexiones entre vistas.
+
+\renewcommand{\refname}{Referencias}
+\nocite{*}
+\bibliographystyle{IEEEtran}
+\bibliography{refs}
 
 \end{document}
