@@ -270,14 +270,15 @@ def ransac_homografia(k_i, k_j, T=1000, t=3.0, semilla=None):
     return H_final, mejor_inliers
 
 
-def crosscheck_Lowe_Matching(desc1, desc2, trees=10, checks=50, threshold = 0.75):
+def crosscheck_Lowe_Matching(desc1, desc2, threshold = 0.75):
     """
         Encuentra correspondencias confiables entre dos conjuntos de descriptores
         combinando dos criterios de filtrado: ratio test de Lowe y verificación
         cruzada (cross-check).
 
         El matching se realiza en ambas direcciones (desc1 -> desc2 y desc2 -> desc1)
-        usando FLANN. En cada dirección se aplica primero el ratio test de Lowe para
+        con busqueda exhaustiva (BFMatcher, norma L2), que es exacta y determinista.
+        En cada dirección se aplica primero el ratio test de Lowe para
         descartar matches ambiguos (donde el 1er y 2do vecino más cercano están a
         distancias similares). Luego, de los matches que sobreviven el ratio test en
         ambas direcciones, se conservan solo aquellos que son mutuamente el mejor
@@ -289,11 +290,6 @@ def crosscheck_Lowe_Matching(desc1, desc2, trees=10, checks=50, threshold = 0.75
             Descriptores de la imagen 1 (consulta), de forma (N1, D).
         desc2 : np.ndarray
             Descriptores de la imagen 2 (candidatos), de forma (N2, D).
-        trees : int, optional
-            Cantidad de árboles KD-tree usados por el índice FLANN (default 10).
-        checks : int, optional
-            Cantidad de chequeos realizados durante la búsqueda FLANN; controla el
-            trade-off entre precisión y velocidad (default 50).
         threshold : float, optional
             Umbral del ratio test de Lowe. Un match se acepta si distance(1er vecino)
             < threshold * distance(2do vecino) (default 0.75).
@@ -306,23 +302,20 @@ def crosscheck_Lowe_Matching(desc1, desc2, trees=10, checks=50, threshold = 0.75
             desc1 y trainIdx referido a desc2.
     """
 
-    dict_idxs = dict(algorithm=1, trees=trees)
-    search_params = dict(checks=checks)
-    flann = cv2.FlannBasedMatcher(dict_idxs, search_params)
-
+    bf = cv2.BFMatcher(cv2.NORM_L2)
 
     good_matches_12 = []
     good_matches_21 = []
 
     # Dirección 1 -> 2 (mejor par de vecinos, k=2)
-    matches_12 = flann.knnMatch(desc1, desc2, k=2)
+    matches_12 = bf.knnMatch(desc1, desc2, k=2)
 
     for m, n in matches_12:
         if m.distance < threshold * n.distance:
             good_matches_12.append(m)
 
     # Dirección 2 -> 1
-    matches_21 = flann.knnMatch(desc2, desc1, k=2)
+    matches_21 = bf.knnMatch(desc2, desc1, k=2)
 
     for m, n in matches_21:
         if m.distance < threshold * n.distance:
@@ -455,7 +448,7 @@ def plot_warp_3_imagenes(img_izq, img_centro, img_der, H_izq, H_der, titulo=None
     return blended
 
 
-def estimar_homografia(kp0, desc0, kp1, desc1, t=5.0, T=1000, _print=False):
+def estimar_homografia(kp0, desc0, kp1, desc1, t=5.0, T=1000, semilla=0, _print=False):
     """
     Realiza el matching cruzado entre descriptores, filtra con RANSAC 
     y devuelve la homografía final junto con los matches válidos (inliers).
@@ -471,7 +464,7 @@ def estimar_homografia(kp0, desc0, kp1, desc1, t=5.0, T=1000, _print=False):
     pts0 = np.array([kp0[m.queryIdx].pt for m in matches])
     pts1 = np.array([kp1[m.trainIdx].pt for m in matches])
 
-    H, inliers_mask = ransac_homografia(pts0, pts1, t=t, T=T)
+    H, inliers_mask = ransac_homografia(pts0, pts1, t=t, T=T, semilla=semilla)
     #Filtrar la lista de objetos DMatch conservando solo los inliers
     inlier_matches = [m for m, es_inlier in zip(matches, inliers_mask) if es_inlier]
     
