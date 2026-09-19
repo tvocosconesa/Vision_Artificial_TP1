@@ -30,15 +30,15 @@
 
 \author{
 \IEEEauthorblockN{Vocos Conesa, Tomás}
-\IEEEauthorblockA{\textit{Ing. en Inteligencia Artificial} \\
+\IEEEauthorblockA{Legajo: \textit{36643} \\
 tvocosconesa@udesa.edu.ar}
 \and
 \IEEEauthorblockN{De Hieronymis, Martín Ariel}
-\IEEEauthorblockA{\textit{Ing. en Inteligencia Artificial} \\
+\IEEEauthorblockA{Legajo: \textit{36768} \\
 mdehieronymis@udesa.edu.ar}
 \and
-\IEEEauthorblockN{Larisson, Zoe}
-\IEEEauthorblockA{\textit{Ing. en Inteligencia Artificial} \\
+\IEEEauthorblockN{Larisson, Zoe Yazmín}
+\IEEEauthorblockA{Legajo: \textit{36777} \\
 zlarisson@udesa.edu.ar}
 }
 
@@ -50,16 +50,17 @@ Se implementa un pipeline completo de construcción de imágenes panorámicas a 
 
 \section{Introducción}
 
-Una imagen digital es el resultado de proyectar una escena tridimensional sobre un plano a través de un modelo de cámara \textit{pinhole}. Dos fotografías de una misma escena, tomadas con la misma cámara desde distintas posiciones, están relacionadas por una transformación proyectiva lineal de $3\times3$ (\emph{homografía}, $H$, con 8 grados de libertad) que mapea puntos homogéneos $\mathbf{x}$ de una imagen a puntos $\mathbf{x}'$ de la otra,
+Una imagen digital es el resultado de proyectar una escena tridimensional sobre un plano a través de un modelo de cámara \textit{pinhole}. Dos fotografías de una misma escena, tomadas con la misma cámara desde distintas posiciones, están relacionadas por una transformación proyectiva lineal de $3\times3$ (homografía, $H$, con 8 grados de libertad) que mapea puntos homogéneos $\mathbf{x}$ de una imagen a puntos $\mathbf{x}'$ de la otra,
 \begin{equation}
 \mathbf{x}' \sim H\mathbf{x},
 \label{eq:homografia}
 \end{equation}
 donde $\sim$ denota igualdad a menos de un factor de escala, \textbf{si y solo si} se cumple alguna de dos hipótesis geométricas: (1) que la escena observada sea (aproximadamente) \textbf{plana}, o (2) que la cámara haya sufrido únicamente una \textbf{rotación pura} alrededor de su centro óptico entre una toma y la otra, sin traslación.
 
-Bajo cualquiera de estas dos hipótesis, la relación entre imágenes no depende de la profundidad de la escena, por lo que una única matriz $H$ alcanza para alinear todos los puntos. Cuando ninguna de las dos se cumple exactamente --es decir, cuando la cámara se traslada \emph{y} la escena tiene profundidad variable-- aparece \textbf{paralaje}: objetos a distinta distancia de la cámara se desplazan de forma distinta entre las dos vistas, y ninguna homografía única puede alinearlos a todos simultáneamente. El síntoma visible es \emph{ghosting} (objetos duplicados o desalineados) en la zona de solapamiento, particularmente en los objetos más cercanos a la cámara.
+Bajo cualquiera de estas dos hipótesis, la relación entre imágenes no depende de la profundidad de la escena, por lo que una única matriz $H$ alcanza para alinear todos los puntos. Cuando ninguna de las dos se cumple exactamente, es decir, cuando la cámara se traslada \emph{y} la escena tiene profundidad variable, aparece \textbf{paralaje}: objetos a distinta distancia de la cámara se desplazan de forma distinta entre las dos vistas, y ninguna homografía única puede alinearlos a todos simultáneamente. El síntoma visible es \emph{ghosting} (objetos duplicados o desalineados) en la zona de solapamiento, particularmente en los objetos más cercanos a la cámara.
 
-\textbf{Análisis de los conjuntos utilizados.} El conjunto \textit{cuadro} (Fig.~\ref{fig:dataset_cuadro}) corresponde a un cuadro colgado sobre una pared, fotografiado desde tres posiciones cercanas. La escena es aproximadamente plana --el cuadro domina el campo visual-- por lo que la hipótesis (1) se cumple razonablemente bien; el principal apartamiento proviene de que las tomas no son una rotación pura sino que incluyen un leve desplazamiento lateral de la cámara, lo que introduce paralaje respecto del borde de la mesa y de la caja apoyada en primer plano. El conjunto propio (fotos del campus, Fig.~\ref{fig:panoramas}) es el caso opuesto: la escena \emph{no} es plana (edificio, césped y árboles), pero las tres fotos fueron tomadas girando la cámara sobre un mismo punto aproximado, por lo que se aproxima mejor a la hipótesis (2). El paralaje residual se manifiesta principalmente en los árboles del primer plano, que son los objetos más cercanos a la cámara.
+\textbf{Análisis de los conjuntos utilizados.} 
+El conjunto \textit{cuadro} (Fig.~\ref{fig:dataset_cuadro}) corresponde a un cuadro colgado sobre una pared, fotografiado desde tres posiciones cercanas. La escena es aproximadamente plana --el cuadro domina el campo visual-- por lo que la hipótesis (1) se cumple razonablemente bien; el principal apartamiento proviene de que las tomas no son una rotación pura sino que incluyen un leve desplazamiento lateral de la cámara, lo que introduce paralaje respecto del borde de la mesa y de la caja apoyada en primer plano. El conjunto propio (fotos del campus, Fig.~\ref{fig:panoramas}) es el caso opuesto: la escena \emph{no} es plana (edificio, césped y árboles), pero las tres fotos fueron tomadas girando la cámara sobre un mismo punto aproximado, por lo que se aproxima mejor a la hipótesis (2). El paralaje residual se manifiesta principalmente en los árboles del primer plano, que son los objetos más cercanos a la cámara.
 
 \begin{figure}[htbp]
 \centering
@@ -88,14 +89,14 @@ El conjunto propio, en cambio, se procesa a su resolución nativa, que ya es lo 
 
 \subsection{Detección y descripción de características}
 
-Se utilizó el detector-descriptor \textbf{SIFT} (\textit{Scale-Invariant Feature Transform}), a través de \texttt{cv2.SIFT\_create}. SIFT construye un espacio de escalas convolucionando la imagen con Gaussianas de $\sigma$ creciente y toma diferencias entre escalas adyacentes (\textit{Difference of Gaussians}); los \textit{keypoints} son los extremos locales de ese volumen en las tres dimensiones $(x,y,\sigma)$, lo que les asigna simultáneamente una posición y una escala característica. A cada punto se le asigna luego una orientación dominante a partir de un histograma de gradientes de su vecindad, y el descriptor final es un vector de 128 dimensiones construido como una grilla de $4\times4$ histogramas de gradientes de 8 orientaciones cada uno, calculados \emph{relativos} a esa orientación dominante y normalizados.
+Se utilizó el detector-descriptor \textbf{SIFT} (\textit{Scale-Invariant Feature Transform}), a través de \texttt{cv2.SIFT\_create}. SIFT construye un espacio de escalas convolucionando la imagen con Gaussianas de $\sigma$ creciente y toma diferencias entre escalas adyacentes (\textit{Difference of Gaussians}). Los \textit{keypoints} son los extremos locales de ese volumen en las tres dimensiones $(x,y,\sigma)$, lo que les asigna simultáneamente una posición y una escala característica. A cada punto se le asigna luego una orientación dominante a partir de un histograma de gradientes de su vecindad, y el descriptor final es un vector de 128 dimensiones construido como una grilla de $4\times4$ histogramas de gradientes de 8 orientaciones cada uno, calculados \emph{relativos} a esa orientación dominante y normalizados.
 
 De esta construcción se desprenden sus propiedades de invariancia, que son las que lo hacen apropiado para este problema: invariancia a rotación (por la orientación dominante), a escala (por la detección en el espacio de escalas), y robustez razonable a cambios de iluminación (por la normalización del descriptor) y a cambios de perspectiva moderados. SIFT opera internamente sobre la intensidad, por lo que no fue necesaria una conversión previa a escala de grises.
 
 \subsection{Supresión de No Máxima Adaptativa (A-NMS)}
 \label{sec:anms}
 
-Los \textit{keypoints} de SIFT no se distribuyen de manera uniforme: se concentran en las regiones de mayor textura. Si se usaran todos tal cual, las correspondencias --y por lo tanto la homografía estimada a partir de ellas-- quedarían dominadas por esa región, y el ajuste sería pobre en el resto de la imagen. El objetivo de A-NMS es seleccionar un subconjunto de tamaño fijo $N$ que sea a la vez \emph{fuerte} (puntos de alta respuesta) y \emph{espacialmente disperso}.
+Los \textit{keypoints} de SIFT no se distribuyen de manera uniforme: se concentran en las regiones de mayor textura. Si se usaran todos los obtenidos, las correspondencias (y por lo tanto la homografía estimada a partir de ellas) quedarían dominadas por esa región, y el ajuste sería pobre en el resto de la imagen. El objetivo de A-NMS es seleccionar un subconjunto de tamaño fijo $N$ que sea a la vez \emph{fuerte} (puntos de alta respuesta) y \emph{espacialmente disperso}.
 
 La idea central es asignar a cada \textit{keypoint} $i$ un \textbf{radio de supresión} $R_i$, definido como la distancia al \textit{keypoint} más cercano que tenga una respuesta estrictamente mayor:
 \begin{equation}

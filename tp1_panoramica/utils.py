@@ -1,7 +1,22 @@
 from graficos import *
 
-#-------------------------------------------------------------------------------------------------------------------------
-#ANMS
+#------------------------------------------
+#A-NMS
+def calc_anms(img, n_max=200, _print=False):
+    """Detecta keypoints con SIFT, aplica ANMS y devuelve los keypoints
+    seleccionados junto con SUS descriptores correspondientes (alineados
+    índice a índice, que es lo que necesita el matching)."""
+    sift = cv2.SIFT_create(nfeatures=16000)  # sin limitar nfeatures, detectamos todos primero
+    all_keys, all_desc = sift.detectAndCompute(img, None)
+
+    kp_anms, idx_anms = anms(all_keys, n_max=n_max)
+    desc_anms = all_desc[idx_anms]   
+
+    if _print:
+        print(f'Keypoints detectados originalmente: {len(all_keys)}')
+        print(f'Keypoints tras ANMS: {len(kp_anms)}')
+
+    return kp_anms, desc_anms
 
 def anms(keypoints, n_max):
     """
@@ -11,8 +26,7 @@ def anms(keypoints, n_max):
     priorizando aquellos con mayor 'respuesta' (response) que además
     estén rodeados de un radio libre de otros puntos más fuertes.
 
-    Retorna
-    -------
+    Retorna=
     selected_keypoints : list[cv2.KeyPoint]
         Los n_max keypoints seleccionados, bien distribuidos espacialmente.
     top_indices : np.ndarray (n_max,)
@@ -49,8 +63,9 @@ def anms(keypoints, n_max):
     selected_keypoints = [keypoints[i] for i in top_indices]
 
     return selected_keypoints, top_indices
-#-------------------------------------------------------------------------------------------------------------------------
-#matchear:
+
+#-------------------------------------
+#Matching
 
 def detectar_matches(descr1, descr2, ratio=0.75, plot=False,
                       img1=None, kp1=None, img2=None, kp2=None, titulo=None):
@@ -71,23 +86,6 @@ def detectar_matches(descr1, descr2, ratio=0.75, plot=False,
 
     return good_matches
 
-
-
-def graf_keypoints(img,keypoints,r=0):
-    automatico=0
-
-    if(r==0):
-        automatico=1
-    
-    img_copy=img.copy()
-    for kp in keypoints:
-        x, y = int(kp.pt[0]), int(kp.pt[1])
-        if(automatico==1):
-            r = max(7, int(kp.size / 3))
-        cv2.circle(img_copy, (x, y), r + 2, (0, 0, 0), -1)    # halo negro
-        cv2.circle(img_copy, (x, y), r, (0, 0, 255), -1)      # rojo llamativo (BGR)
-    return img_copy
-
 def matchea(desc1,desc2,trees=10,checks=50):
     dict_indices=dict(algorithm=1, trees=trees)
     search_params = dict(checks=checks)
@@ -104,40 +102,96 @@ def matchea(desc1,desc2,trees=10,checks=50):
             buenos_matches.append(m)
     return buenos_matches
 
-def calc_anms(img, n_max=200, _print=False):
-    """Detecta keypoints con SIFT, aplica ANMS y devuelve los keypoints
-    seleccionados junto con SUS descriptores correspondientes (alineados
-    índice a índice, que es lo que necesita el matching)."""
-    sift = cv2.SIFT_create(nfeatures=16000)  # sin limitar nfeatures, detectamos todos primero
-    all_keys, all_desc = sift.detectAndCompute(img, None)
+def crosscheck_Lowe_Matching(desc1, desc2, threshold = 0.75):
+    """
+        Encuentra correspondencias confiables entre dos conjuntos de descriptores
+        combinando dos criterios de filtrado: ratio test de Lowe y verificación
+        cruzada (cross-check).
 
-    kp_anms, idx_anms = anms(all_keys, n_max=n_max)
-    desc_anms = all_desc[idx_anms]   
+        El matching se realiza en ambas direcciones (desc1 -> desc2 y desc2 -> desc1)
+        con busqueda exhaustiva (BFMatcher, norma L2), que es exacta y determinista.
+        En cada dirección se aplica primero el ratio test de Lowe para
+        descartar matches ambiguos (donde el 1er y 2do vecino más cercano están a
+        distancias similares). Luego, de los matches que sobreviven el ratio test en
+        ambas direcciones, se conservan solo aquellos que son mutuamente el mejor
+        match del otro (cross-check), es decir, correspondencias simétricas.
 
+        Parameters
+        ----------
+        desc1 : np.ndarray
+            Descriptores de la imagen 1 (consulta), de forma (N1, D).
+        desc2 : np.ndarray
+            Descriptores de la imagen 2 (candidatos), de forma (N2, D).
+        threshold : float, optional
+            Umbral del ratio test de Lowe. Un match se acepta si distance(1er vecino)
+            < threshold * distance(2do vecino) (default 0.75).
+
+        Returns
+        -------
+        list[cv2.DMatch]
+            Lista de matches que pasan tanto el ratio test como la verificación
+            cruzada en ambas direcciones. Cada DMatch tiene queryIdx referido a
+            desc1 y trainIdx referido a desc2.
+    """
+
+    bf = cv2.BFMatcher(cv2.NORM_L2)
+
+    good_matches_12 = []
+    good_matches_21 = []
+
+    # Dirección 1 -> 2 (mejor par de vecinos, k=2)
+    matches_12 = bf.knnMatch(desc1, desc2, k=2)
+
+    for m, n in matches_12:
+        if m.distance < threshold * n.distance:
+            good_matches_12.append(m)
+
+    # Dirección 2 -> 1
+    matches_21 = bf.knnMatch(desc2, desc1, k=2)
+
+    for m, n in matches_21:
+        if m.distance < threshold * n.distance:
+            good_matches_21.append(m)
+
+    # Para verificar simetría rápido, armamos un diccionario:
+    # para cada query en 2, cuál es su mejor match en 1
+    mejor_de_2_en_1 = {m.queryIdx: m.trainIdx for m in good_matches_21 }
+
+    final_good_matches = []
+    for match in good_matches_12:
+        if mejor_de_2_en_1.get(match.trainIdx) == match.queryIdx:
+            final_good_matches.append(match)
+
+    return final_good_matches
+
+#-------------------------------------
+#Cálculos Homografia
+
+def estimar_homografia(kp0, desc0, kp1, desc1, t=5.0, T=1000, semilla=0, _print=False):
+    """
+    Realiza el matching cruzado entre descriptores, filtra con RANSAC 
+    y devuelve la homografía final junto con los matches válidos (inliers).
+    """
+    
+    matches = crosscheck_Lowe_Matching(desc0, desc1)
+    
+    #Validación de seguridad para evitar que RANSAC colapse
+    if len(matches) < 4:
+        raise ValueError(f"Insuficientes matches: Se encontraron {len(matches)} y se necesitan al menos 4.")
+
+    #Extrae (x, y) de los keypoints emparejados
+    pts0 = np.array([kp0[m.queryIdx].pt for m in matches])
+    pts1 = np.array([kp1[m.trainIdx].pt for m in matches])
+
+    H, inliers_mask = ransac_homografia(pts0, pts1, t=t, T=T, semilla=semilla)
+    #Filtrar la lista de objetos DMatch conservando solo los inliers
+    inlier_matches = [m for m, es_inlier in zip(matches, inliers_mask) if es_inlier]
+    
     if _print:
-        print(f'Keypoints detectados originalmente: {len(all_keys)}')
-        print(f'Keypoints tras ANMS: {len(kp_anms)}')
+        print(f'Matches iniciales con cross-check: {len(matches)}')
+        print(f'Inliers RANSAC: {len(inlier_matches)} de {len(matches)}')
 
-    return kp_anms, desc_anms
-
-def _normalizar_puntos(pts):
-    pts = np.asarray(pts, dtype=np.float64)
-    centroide = pts.mean(axis=0)
-    desplazados = pts - centroide
-    dist_media = np.mean(np.sqrt(np.sum(desplazados ** 2, axis=1)))
-
-    escala = np.sqrt(2) / dist_media if dist_media > 1e-8 else 1.0
-
-    T = np.array([
-        [escala, 0,      -escala * centroide[0]],
-        [0,      escala, -escala * centroide[1]],
-        [0,      0,       1]
-    ])
-
-    pts_h = np.hstack([pts, np.ones((pts.shape[0], 1))])
-    pts_norm = (T @ pts_h.T).T
-    return pts_norm[:, :2], T
-
+    return H, inlier_matches
 
 def calcular_homografia_dlt(pts_origen, pts_destino, normalizar=True):
     pts_origen = np.asarray(pts_origen, dtype=np.float64)
@@ -173,7 +227,6 @@ def calcular_homografia_dlt(pts_origen, pts_destino, normalizar=True):
     # Fijar la escala para que H[2,2] = 1
     H = H / H[2, 2]
     return H
-
 
 def homografia_entre_imagenes(img1, img2, pts1, pts2, normalizar=True):
     pts1 = np.asarray(pts1, dtype=np.float64)
@@ -269,87 +322,7 @@ def ransac_homografia(k_i, k_j, T=1000, t=3.0, semilla=None):
  
     return H_final, mejor_inliers
 
-
-def crosscheck_Lowe_Matching(desc1, desc2, threshold = 0.75):
-    """
-        Encuentra correspondencias confiables entre dos conjuntos de descriptores
-        combinando dos criterios de filtrado: ratio test de Lowe y verificación
-        cruzada (cross-check).
-
-        El matching se realiza en ambas direcciones (desc1 -> desc2 y desc2 -> desc1)
-        con busqueda exhaustiva (BFMatcher, norma L2), que es exacta y determinista.
-        En cada dirección se aplica primero el ratio test de Lowe para
-        descartar matches ambiguos (donde el 1er y 2do vecino más cercano están a
-        distancias similares). Luego, de los matches que sobreviven el ratio test en
-        ambas direcciones, se conservan solo aquellos que son mutuamente el mejor
-        match del otro (cross-check), es decir, correspondencias simétricas.
-
-        Parameters
-        ----------
-        desc1 : np.ndarray
-            Descriptores de la imagen 1 (consulta), de forma (N1, D).
-        desc2 : np.ndarray
-            Descriptores de la imagen 2 (candidatos), de forma (N2, D).
-        threshold : float, optional
-            Umbral del ratio test de Lowe. Un match se acepta si distance(1er vecino)
-            < threshold * distance(2do vecino) (default 0.75).
-
-        Returns
-        -------
-        list[cv2.DMatch]
-            Lista de matches que pasan tanto el ratio test como la verificación
-            cruzada en ambas direcciones. Cada DMatch tiene queryIdx referido a
-            desc1 y trainIdx referido a desc2.
-    """
-
-    bf = cv2.BFMatcher(cv2.NORM_L2)
-
-    good_matches_12 = []
-    good_matches_21 = []
-
-    # Dirección 1 -> 2 (mejor par de vecinos, k=2)
-    matches_12 = bf.knnMatch(desc1, desc2, k=2)
-
-    for m, n in matches_12:
-        if m.distance < threshold * n.distance:
-            good_matches_12.append(m)
-
-    # Dirección 2 -> 1
-    matches_21 = bf.knnMatch(desc2, desc1, k=2)
-
-    for m, n in matches_21:
-        if m.distance < threshold * n.distance:
-            good_matches_21.append(m)
-
-    # Para verificar simetría rápido, armamos un diccionario:
-    # para cada query en 2, cuál es su mejor match en 1
-    mejor_de_2_en_1 = {m.queryIdx: m.trainIdx for m in good_matches_21 }
-
-    final_good_matches = []
-    for match in good_matches_12:
-        if mejor_de_2_en_1.get(match.trainIdx) == match.queryIdx:
-            final_good_matches.append(match)
-
-    return final_good_matches
-
-
-def calcular_error_reproyeccion(H, kp_src, kp_dst, inlier_matches):
-    """
-    Calcula el error de reproyección promedio (en píxeles) para un conjunto de inliers.
-    """
-  
-    pts_src = np.array([kp_src[m.queryIdx].pt for m in inlier_matches], dtype=np.float64)
-    pts_dst = np.array([kp_dst[m.trainIdx].pt for m in inlier_matches], dtype=np.float64)
-
-    pts_proyectados = _proyectar_puntos(H, pts_src)
-
-    #Calcula la distancia euclidiana entre lo real y la proyección matemática
-    distancias = np.sqrt(np.sum((pts_dst - pts_proyectados) ** 2, axis=1))
-
-    error_medio = np.mean(distancias)
-    
-    return error_medio
-
+#Cálculos para realizar las panorámicas de las imágenes
 
 def calcular_lienzo_panoramica(shape_izq, shape_centro, shape_der, H_izq, H_der):
     """
@@ -448,28 +421,40 @@ def plot_warp_3_imagenes(img_izq, img_centro, img_der, H_izq, H_der, titulo=None
     return blended
 
 
-def estimar_homografia(kp0, desc0, kp1, desc1, t=5.0, T=1000, semilla=0, _print=False):
+#----------------------------------------------
+#Utils
+
+def _normalizar_puntos(pts):
+    pts = np.asarray(pts, dtype=np.float64)
+    centroide = pts.mean(axis=0)
+    desplazados = pts - centroide
+    dist_media = np.mean(np.sqrt(np.sum(desplazados ** 2, axis=1)))
+
+    escala = np.sqrt(2) / dist_media if dist_media > 1e-8 else 1.0
+
+    T = np.array([
+        [escala, 0,      -escala * centroide[0]],
+        [0,      escala, -escala * centroide[1]],
+        [0,      0,       1]
+    ])
+
+    pts_h = np.hstack([pts, np.ones((pts.shape[0], 1))])
+    pts_norm = (T @ pts_h.T).T
+    return pts_norm[:, :2], T
+
+def calcular_error_reproyeccion(H, kp_src, kp_dst, inlier_matches):
     """
-    Realiza el matching cruzado entre descriptores, filtra con RANSAC 
-    y devuelve la homografía final junto con los matches válidos (inliers).
+    Calcula el error de reproyección promedio (en píxeles) para un conjunto de inliers.
     """
-    
-    matches = crosscheck_Lowe_Matching(desc0, desc1)
-    
-    #Validación de seguridad para evitar que RANSAC colapse
-    if len(matches) < 4:
-        raise ValueError(f"Insuficientes matches: Se encontraron {len(matches)} y se necesitan al menos 4.")
+  
+    pts_src = np.array([kp_src[m.queryIdx].pt for m in inlier_matches], dtype=np.float64)
+    pts_dst = np.array([kp_dst[m.trainIdx].pt for m in inlier_matches], dtype=np.float64)
 
-    #Extrae (x, y) de los keypoints emparejados
-    pts0 = np.array([kp0[m.queryIdx].pt for m in matches])
-    pts1 = np.array([kp1[m.trainIdx].pt for m in matches])
+    pts_proyectados = _proyectar_puntos(H, pts_src)
 
-    H, inliers_mask = ransac_homografia(pts0, pts1, t=t, T=T, semilla=semilla)
-    #Filtrar la lista de objetos DMatch conservando solo los inliers
-    inlier_matches = [m for m, es_inlier in zip(matches, inliers_mask) if es_inlier]
+    #Calcula la distancia euclidiana entre lo real y la proyección matemática
+    distancias = np.sqrt(np.sum((pts_dst - pts_proyectados) ** 2, axis=1))
+
+    error_medio = np.mean(distancias)
     
-    if _print:
-        print(f'Matches iniciales con cross-check: {len(matches)}')
-        print(f'Inliers RANSAC: {len(inlier_matches)} de {len(matches)}')
-
-    return H, inlier_matches
+    return error_medio
